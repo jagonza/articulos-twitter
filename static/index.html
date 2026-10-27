@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tweetshelf</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/style.css">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
+</head>
+<body>
+  <aside class="sidebar" id="sidebar">
+    <div class="brand">
+      <span class="logo">📚</span>
+      <div>
+        <h1>Tweetshelf</h1>
+        <p class="muted small">tu estantería de X</p>
+      </div>
+    </div>
+
+    <nav class="views" id="views"></nav>
+
+    <section class="facet">
+      <h3>Etiquetas</h3>
+      <div class="chips" id="tagList"></div>
+    </section>
+    <section class="facet">
+      <h3>Sitios</h3>
+      <ul class="list" id="domainList"></ul>
+    </section>
+    <section class="facet">
+      <h3>Autores</h3>
+      <ul class="list" id="authorList"></ul>
+    </section>
+    <section class="facet small muted" id="exportBox">
+      <h3>Exportar</h3>
+      <a href="/api/export.json" download>JSON completo</a> ·
+      <a href="/api/export.md?view=favorites" target="_blank">Favoritos en Markdown</a>
+    </section>
+  </aside>
+
+  <main>
+    <header class="topbar">
+      <button class="icon-btn only-mobile" id="menuBtn" aria-label="Menú">☰</button>
+      <div class="search">
+        <span>🔎</span>
+        <input id="q" type="search" placeholder="Busca en tuits, artículos, notas y etiquetas…  ( / )" autocomplete="off">
+      </div>
+      <select id="sort" aria-label="Ordenar">
+        <option value="recent">Más recientes</option>
+        <option value="oldest">Más antiguos</option>
+        <option value="relevance">Relevancia</option>
+        <option value="shortest">Lectura corta</option>
+        <option value="longest">Lectura larga</option>
+        <option value="updated">Tocados hace poco</option>
+        <option value="random">Aleatorio</option>
+      </select>
+      <button class="btn ghost" id="surpriseBtn" title="Abre un artículo sin leer al azar">🎲 Sorpréndeme</button>
+      <button class="icon-btn" id="themeBtn" title="Cambiar tema">◐</button>
+      <button class="btn primary" id="importBtn">＋ Importar</button>
+    </header>
+
+    <div class="progress hidden" id="progress"><div class="bar"><span id="progressBar"></span></div><span id="progressText"></span></div>
+
+    <div class="filters" id="activeFilters"></div>
+    <p class="summary muted" id="summary"></p>
+    <section class="grid" id="grid"></section>
+    <div class="more"><button class="btn ghost hidden" id="moreBtn">Cargar más</button></div>
+
+    <div class="empty hidden" id="empty">
+      <div class="big">🗂️</div>
+      <h2>Tu estantería está vacía</h2>
+      <p>Importa tu archivo de datos de X o una exportación de tus elementos guardados para empezar.</p>
+      <button class="btn primary" onclick="openImport()">Importar ahora</button>
+    </div>
+  </main>
+
+  <!-- Lector -->
+  <div class="scrim hidden" id="scrim"></div>
+  <aside class="drawer" id="drawer" aria-hidden="true"></aside>
+
+  <!-- Importar -->
+  <dialog id="importDlg">
+    <form method="dialog" class="dlg-head">
+      <h2>Importar favoritos</h2>
+      <button class="icon-btn" aria-label="Cerrar">✕</button>
+    </form>
+    <label class="drop" id="drop">
+      <input type="file" id="fileInput" multiple accept=".zip,.js,.json,.csv">
+      <div class="big">⬆️</div>
+      <strong>Arrastra aquí tus ficheros</strong>
+      <span class="muted small">.zip del archivo de X, like.js, o el JSON/CSV de tus guardados</span>
+    </label>
+    <div id="importResult" class="small"></div>
+    <details>
+      <summary>¿Cómo consigo mis favoritos?</summary>
+      <ol class="small">
+        <li><b>“Me gusta” (likes):</b> en X ve a <i>Configuración → Tu cuenta → Descargar un archivo de tus datos</i>.
+          Cuando llegue (puede tardar 24 h), sube el .zip o sólo <code>data/like.js</code>.</li>
+        <li><b>Elementos guardados (bookmarks):</b> el archivo de X no los incluye. Abre <code>x.com/i/bookmarks</code>,
+          pega en la consola del navegador el script <code>tools/export_bookmarks.js</code> y sube el JSON que descarga.</li>
+        <li>También vale el JSON/CSV de extensiones como <i>twitter-web-exporter</i>.</li>
+      </ol>
+    </details>
+  </dialog>
+
+  <div class="toast hidden" id="toast"></div>
+  <script src="/static/app.js"></script>
+</body>
+</html>

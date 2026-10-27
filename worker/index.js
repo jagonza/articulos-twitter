@@ -75,7 +75,7 @@ const VIEWS = {
 const LIST_COLS = `i.id, i.sources, i.tweet_text, i.author_handle, i.author_name, i.author_avatar, i.tweet_created, i.tweet_url,
   i.urls, i.media, i.article_url, i.article_status, i.article_title, i.article_author, i.article_site, i.article_date,
   i.article_image, i.article_excerpt, i.article_words, i.article_error, i.domain, i.favorite, i.is_read, i.archived,
-  i.note, i.tags, i.updated_at, i.quoted_id, i.x_status`;
+  i.note, i.tags, i.updated_at, i.quoted_id, i.x_status, json_array_length(i.thread) AS thread_count`;
 // Datos mínimos del tuit citado para pintarlo dentro de la tarjeta.
 const QUOTED_JOIN = "LEFT JOIN items q ON q.id = i.quoted_id";
 const QUOTED_COL = `CASE WHEN q.id IS NULL THEN NULL ELSE json_object('id', q.id, 'tweet_text', q.tweet_text,
@@ -95,6 +95,8 @@ function toItem(r) {
     is_read: !!r.is_read,
     archived: !!r.archived,
     quoted: r.quoted ? JSON.parse(r.quoted) : null,
+    thread: r.thread ? JSON.parse(r.thread) : undefined,
+    thread_text: undefined,
   };
 }
 
@@ -129,21 +131,24 @@ async function listItems(db, p) {
 // ------------------------------------------------------------------ importación
 
 // Los «Artículos» de X vienen ya en la exportación (título, texto, portada): se guardan como artículo.
-// Si ya estaba guardado de X y llega un texto más largo (antes sólo se exportaba la entradilla), se sustituye.
+// Si ya estaba guardado de X y llega un texto más largo o con formato (antes sólo se exportaba la entradilla o
+// el texto plano), se sustituye.
 const MAX_TEXT = 60000; // igual que el extractor, para no acercarse a los 500 MB de D1
 const XA = { article_url: "xa_url", article_title: "xa_title", article_excerpt: "xa_excerpt", article_text: "xa_text",
   article_image: "xa_image", article_words: "xa_words" };
 const XA_WINS = `excluded.article_site = 'X' AND (items.article_status != 'ok'
-  OR (items.article_site = 'X' AND length(coalesce(excluded.article_text, '')) > length(coalesce(items.article_text, ''))))`;
+  OR (items.article_site = 'X' AND (length(coalesce(excluded.article_text, '')) > length(coalesce(items.article_text, ''))
+      OR (instr(excluded.article_text, '](') > 0 AND instr(coalesce(items.article_text, ''), '](') = 0))))`;
 const xaSet = (col, from) => `${col} = CASE WHEN ${XA_WINS} THEN coalesce(${from}, items.${col}) ELSE items.${col} END`;
 
 const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, author_name, author_avatar, tweet_created, tweet_url, urls, media,
-    quoted_id, article_status, article_url, article_title, article_excerpt, article_text, article_image, article_words, article_site, domain)
+    quoted_id, thread, thread_text, article_status, article_url, article_title, article_excerpt, article_text, article_image, article_words,
+    article_site, domain)
   SELECT json_extract(value, '$.id'), json_extract(value, '$.source'), coalesce(json_extract(value, '$.tweet_text'), ''),
          json_extract(value, '$.author_handle'), json_extract(value, '$.author_name'), json_extract(value, '$.author_avatar'),
          json_extract(value, '$.tweet_created'), json_extract(value, '$.tweet_url'),
          coalesce(json_extract(value, '$.urls'), '[]'), coalesce(json_extract(value, '$.media'), '[]'),
-         json_extract(value, '$.quoted_id'),
+         json_extract(value, '$.quoted_id'), json_extract(value, '$.thread'), json_extract(value, '$.thread_text'),
          CASE WHEN json_extract(value, '$.xa_url') IS NOT NULL THEN 'ok'
               WHEN json_array_length(coalesce(json_extract(value, '$.urls'), '[]')) > 0 THEN 'pending' ELSE 'none' END,
          ${Object.values(XA).map((k) => `json_extract(value, '$.${k}')`).join(", ")},
@@ -165,6 +170,8 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
     tweet_url = CASE WHEN items.author_handle IS NULL THEN excluded.tweet_url ELSE items.tweet_url END,
     media = CASE WHEN items.media = '[]' THEN excluded.media ELSE items.media END,
     quoted_id = coalesce(items.quoted_id, excluded.quoted_id),
+    thread = CASE WHEN length(coalesce(excluded.thread, '')) > length(coalesce(items.thread, '')) THEN excluded.thread ELSE items.thread END,
+    thread_text = CASE WHEN length(coalesce(excluded.thread, '')) > length(coalesce(items.thread, '')) THEN excluded.thread_text ELSE items.thread_text END,
     ${Object.keys(XA).map((c) => xaSet(c, `excluded.${c}`)).join(",\n    ")},
     domain = CASE WHEN ${XA_WINS} THEN 'x.com' ELSE items.domain END,
     article_site = CASE WHEN ${XA_WINS} THEN 'X' ELSE items.article_site END,
@@ -173,6 +180,30 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
     urls = CASE WHEN items.urls = '[]' THEN excluded.urls ELSE items.urls END`;
 
 const SOURCES = new Set(["like", "bookmark", "quoted"]);
+
+function cleanThread(thread) {
+  if (!Array.isArray(thread) || thread.length < 2) return { thread: null, thread_text: null };
+  const list = thread.slice(0, 100).filter((t) => t && /^\d+$/.test(String(t.id))).map((t) => ({
+    id: String(t.id), text: String(t.text || "").slice(0, 25000),
+    media: (Array.isArray(t.media) ? t.media : []).filter((m) => typeof m === "string").slice(0, 8),
+    links: (Array.isArray(t.links) ? t.links : []).filter((l) => typeof l === "string").slice(0, 10),
+  }));
+  return { thread: JSON.stringify(list), thread_text: list.map((t) => t.text).join("\n\n") };
+}
+
+// D1 admite parámetros de hasta 2 MB: con artículos y hilos largos, el lote se parte en trozos.
+function bySize(rows, max = 900_000) {
+  const groups = [];
+  let cur = [], size = 0;
+  for (const r of rows) {
+    const n = JSON.stringify(r).length;
+    if (cur.length && size + n > max) { groups.push(cur); cur = []; size = 0; }
+    cur.push(r);
+    size += n;
+  }
+  if (cur.length) groups.push(cur);
+  return groups.map((g) => JSON.stringify(g));
+}
 
 async function importItems(db, items) {
   const clean = items
@@ -186,6 +217,7 @@ async function importItems(db, items) {
         // el enlace al propio Artículo de X no aporta nada como texto del tuit (exportaciones antiguas lo traían)
         tweet_text: xa.url ? String(it.tweet_text || "").replace(/\s*(https?:\/\/)?(x|twitter)\.com\/i\/article\/\d+\S*/g, "").trim() : it.tweet_text,
         urls: JSON.stringify(it.urls || []), media: JSON.stringify(it.media || []),
+        ...cleanThread(it.thread),
         xa_url: xa.url || null, xa_title: xa.title || null, xa_excerpt: xa.excerpt || null, xa_image: xa.image || null,
         xa_text: xaText, xa_words: xaText ? xaText.split(/\s+/).filter(Boolean).length : null,
       };
@@ -194,7 +226,7 @@ async function importItems(db, items) {
   const ids = JSON.stringify(clean.map((it) => it.id));
   const [existing] = await db.batch([
     db.prepare("SELECT COUNT(*) AS n FROM items WHERE id IN (SELECT value FROM json_each(?1))").bind(ids),
-    db.prepare(UPSERT).bind(JSON.stringify(clean)),
+    ...bySize(clean).map((group) => db.prepare(UPSERT).bind(group)),
   ]);
   const updated = existing.results[0].n;
   return { found: items.length, added: clean.length - updated, updated };
@@ -208,13 +240,15 @@ const ARTICLE_FIELDS = ["article_url", "article_status", "article_title", "artic
 async function saveArticles(db, results) {
   const rows = results.filter((r) => r && r.id).map((r) => ({ ...r, id: String(r.id), tags: JSON.stringify(r.tags || []) }));
   if (!rows.length) return { saved: 0 };
-  const sets = ARTICLE_FIELDS.map((f) => `${f} = json_extract(j.value, '$.${f}')`).join(", ");
-  await db.batch([
-    db.prepare(`UPDATE items SET ${sets},
+  // Si al volver a extraer la web falla, se conserva el artículo que ya teníamos.
+  const keep = `json_extract(j.value, '$.article_status') = 'failed' AND items.article_text IS NOT NULL AND items.article_text != ''`;
+  const kept = { article_status: "'ok'" };
+  const sets = ARTICLE_FIELDS.map((f) => `${f} = CASE WHEN ${keep} THEN ${kept[f] || `items.${f}`} ELSE json_extract(j.value, '$.${f}') END`).join(", ");
+  const update = `UPDATE items SET ${sets},
         tags = (SELECT json_group_array(value) FROM (SELECT value FROM json_each(items.tags) UNION SELECT value FROM json_each(json_extract(j.value, '$.tags')))),
         updated_at = datetime('now')
-      FROM json_each(?1) AS j WHERE items.id = json_extract(j.value, '$.id')`).bind(JSON.stringify(rows)),
-  ]);
+      FROM json_each(?1) AS j WHERE items.id = json_extract(j.value, '$.id')`;
+  await db.batch(bySize(rows).map((group) => db.prepare(update).bind(group)));
   return { saved: rows.length };
 }
 

@@ -9,7 +9,10 @@ const api = async (path, opts = {}) => {
   return r.json();
 };
 const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
-const marked = (s) => esc(s).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
+// Los fragmentos de búsqueda vienen del texto en Markdown: se quitan las marcas para que se lean limpios.
+const plainMd = (s) => String(s ?? "").replace(/!\[[^\]]*\]\([^)]*\)?/g, "").replace(/\[([^\]]*)\]\([^)]*\)?/g, "$1")
+  .replace(/(\*\*|~~|`)/g, "").replace(/(^|\n)\s*(#{1,6}|>|[-*]|\d+[.)])\s+/g, "$1");
+const marked = (s) => esc(plainMd(s)).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
 const favicon = (d) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64`;
 const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
 const hue = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
@@ -91,6 +94,108 @@ function linkify(text) {
   return esc(text).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${u.replace(/^https?:\/\//, "").slice(0, 40)}${u.length > 48 ? "…" : ""}</a>`);
 }
 
+// ------------------------------------------------------------------ Markdown del lector
+// Los artículos se guardan en Markdown (los antiguos, en texto plano: cada línea es un párrafo).
+// Se escapa todo el HTML y sólo se generan las etiquetas de abajo, con enlaces e imágenes http(s).
+
+const safeUrl = (u) => (/^https?:\/\//i.test(u) ? u : null);
+
+function mdInline(text) {
+  const out = [];
+  let rest = text;
+  // Imágenes y enlaces primero, para que sus URLs no pasen por las demás reglas.
+  const re = /!\[([^\]]*)\]\(([^)\s]+)\)|\[([^\]]+)\]\(([^)\s]+)\)/g;
+  let last = 0, m;
+  const fmt = (t) => esc(t)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+?)\*\*/g, "<strong>$1</strong>")
+    .replace(/~~([^~]+?)~~/g, "<del>$1</del>")
+    .replace(/\*([^*\s](?:[^*]*?[^*\s])?)\*/g, "<em>$1</em>")
+    .replace(/(^|\s)(https?:\/\/[^\s<]+)/g, (_, sp, u) => `${sp}<a href="${u}" target="_blank" rel="noopener">${u.replace(/^https?:\/\//, "").slice(0, 60)}</a>`);
+  while ((m = re.exec(rest))) {
+    out.push(fmt(rest.slice(last, m.index)));
+    if (m[2] !== undefined) {
+      const u = safeUrl(m[2]);
+      out.push(u ? `<img src="${esc(u)}" alt="${esc(m[1])}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "");
+    } else {
+      const u = safeUrl(m[4]);
+      out.push(u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${fmt(m[3])}</a>` : fmt(m[3]));
+    }
+    last = re.lastIndex;
+  }
+  out.push(fmt(rest.slice(last)));
+  return out.join("");
+}
+
+function renderMarkdown(src, title = "") {
+  const lines = String(src || "").replace(/\r/g, "").split("\n");
+  const html = [];
+  let list = null, quote = [], table = [];
+  const flush = () => {
+    if (list) { html.push(`<${list.tag}>${list.items.map((i) => `<li>${mdInline(i)}</li>`).join("")}</${list.tag}>`); list = null; }
+    if (quote.length) { html.push(`<blockquote>${quote.map((q) => `<p>${mdInline(q)}</p>`).join("")}</blockquote>`); quote = []; }
+    if (table.length) {
+      const rows = table.filter((r) => !/^\|?\s*:?-{2,}/.test(r)).map((r) => r.replace(/^\||\|$/g, "").split("|"));
+      html.push(`<div class="table-wrap"><table>${rows.map((cells, i) => `<tr>${cells.map((c) => `<${i ? "td" : "th"}>${mdInline(c.trim())}</${i ? "td" : "th"}>`).join("")}</tr>`).join("")}</table></div>`);
+      table = [];
+    }
+  };
+  let first = true;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const t = line.trim();
+    if (!t) { flush(); continue; }
+    if (t.startsWith("```")) {
+      flush();
+      const code = [];
+      while (++i < lines.length && !lines[i].trim().startsWith("```")) code.push(lines[i]);
+      html.push(`<pre><code>${esc(code.join("\n"))}</code></pre>`);
+      continue;
+    }
+    let m;
+    if ((m = t.match(/^(#{1,6})\s+(.*)$/))) {
+      flush();
+      // El primer título suele repetir el del artículo, que ya está arriba.
+      if (first && m[2].replace(/[*_]/g, "").trim() === title.trim()) { first = false; continue; }
+      const level = Math.min(4, Math.max(2, m[1].length + 1));
+      html.push(`<h${level}>${mdInline(m[2])}</h${level}>`);
+    } else if ((m = t.match(/^[-*+]\s+(.*)$/)) || (m = t.match(/^\d+[.)]\s+(.*)$/))) {
+      const tag = /^\d/.test(t) ? "ol" : "ul";
+      if (quote.length || table.length || (list && list.tag !== tag)) flush();
+      list = list || { tag, items: [] };
+      list.items.push(m[1]);
+    } else if (t.startsWith(">")) {
+      if (list || table.length) flush();
+      quote.push(t.replace(/^>\s?/, ""));
+    } else if (t.startsWith("|") && t.endsWith("|")) {
+      if (list || quote.length) flush();
+      table.push(t);
+    } else if (/^(-{3,}|\*{3,}|_{3,})$/.test(t)) {
+      flush();
+      html.push("<hr>");
+    } else if (/^!\[[^\]]*\]\([^)\s]+\)$/.test(t)) {
+      flush();
+      html.push(`<figure>${mdInline(t)}${t.match(/^!\[([^\]]+)\]/) ? `<figcaption>${esc(t.match(/^!\[([^\]]+)\]/)[1])}</figcaption>` : ""}</figure>`);
+    } else {
+      flush();
+      if (first && t === title.trim()) { first = false; continue; }
+      html.push(`<p>${mdInline(t)}</p>`);
+    }
+    first = false;
+  }
+  flush();
+  return html.join("");
+}
+
+function threadBlock(it) {
+  if (!it.thread?.length) return "";
+  return `<div class="side-box"><h4>🧵 Hilo · ${it.thread.length} tuits</h4><ol class="thread">${it.thread.map((t) => `
+    <li class="${t.id === it.id ? "current" : ""}">
+      <div class="text">${linkify(t.text)}</div>
+      ${t.media?.length ? `<div class="media-row">${t.media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : ""}
+    </li>`).join("")}</ol></div>`;
+}
+
 function card(it, i) {
   const hasArticle = it.article_status === "ok";
   const img = it.article_image || it.media[0];
@@ -110,6 +215,7 @@ function card(it, i) {
         ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : it.article_excerpt ? `<p class="excerpt">${esc(it.article_excerpt)}</p>` : ""}`
         : `${it.article_url ? `<div class="site"><img src="${favicon(it.domain)}" alt=""><a href="${esc(it.article_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.domain)} ↗</a></div>` : ""}${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}`}
       ${tweetBlock(it, true)}
+      ${it.thread_count ? `<div class="thread-badge">🧵 Hilo de ${it.thread_count} tuits</div>` : ""}
       ${quoteBlock(it.quoted)}
       <div class="meta">
         ${status}
@@ -150,7 +256,7 @@ async function openItem(it) {
   state.open = full;
   const d = $("#drawer");
   const mins = readMins(full.article_words);
-  const paras = (full.article_text || "").split(/\n+/).filter((p, i) => p.trim() && !(i === 0 && p.trim() === (full.article_title || "").trim())).map((p) => `<p>${esc(p)}</p>`).join("");
+  const paras = renderMarkdown(full.article_text, full.article_title || "");
   d.innerHTML = `
     <div class="head">
       <button class="icon-btn" data-d="close" title="Cerrar (Esc)">✕</button>
@@ -177,6 +283,7 @@ async function openItem(it) {
         ${full.quoted && !full.archived ? `<p class="small"><button class="btn ghost small" data-d="keep-quoted"
           title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : ""}
       </div>
+      ${threadBlock(full)}
       ${full.quoted_by?.length ? `<div class="side-box"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
 
       <div class="side-box"><h4>Mis notas <span class="save-state" id="saveState"></span></h4>
@@ -225,7 +332,7 @@ function closeDrawer() {
 function syncItem(full) {
   const i = state.items.findIndex((x) => x.id === full.id);
   if (i < 0) return;
-  state.items[i] = { ...state.items[i], ...full, article_text: undefined };
+  state.items[i] = { ...state.items[i], ...full, article_text: undefined, thread: undefined };
   const el = $(`.card[data-i="${i}"]`);
   if (el) el.outerHTML = card(state.items[i], i);
 }

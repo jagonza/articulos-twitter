@@ -109,6 +109,10 @@ def extract(urls, timeout=20):
                                           favor_recall=True, as_dict=True) or {}
         text = (doc.get("text") or "").strip()
         words = len(text.split())
+        # El texto se guarda en Markdown para conservar títulos, listas, negritas, enlaces e imágenes.
+        md = trafilatura.extract(html, url=final, output_format="markdown", include_images=True, include_formatting=True,
+                                 include_links=True, include_tables=True, include_comments=False, favor_recall=True)
+        md = (md or "").strip()
         title = doc.get("title") or _meta(html, "og:title") or result["domain"]
         if words < 120 and CHALLENGE_RE.search(title):
             return {**result, "article_status": "failed", "article_error": "La web pide verificación anti-bots"}
@@ -122,7 +126,7 @@ def extract(urls, timeout=20):
             "article_date": doc.get("date"),
             "article_image": doc.get("image") or _meta(html, "og:image"),
             "article_excerpt": (excerpt or "")[:500],
-            "article_text": text[:MAX_TEXT],
+            "article_text": (md if len(md) >= len(text) * 0.8 else text)[:MAX_TEXT],
             "article_words": words,
             "article_error": None,
             "tags": sorted(auto_tags(final, words)),

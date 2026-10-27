@@ -14,7 +14,7 @@
 // página mientras baja sola.
 //
 // Puedes parar antes con `window.__stopExport = true` en la consola: descargará lo recogido.
-// Al final pide uno a uno los tuits largos y los Artículos de X, que en la lista llegan recortados.
+// Al final pide uno a uno los hilos, los tuits largos y los Artículos de X, que en la lista llegan recortados.
 (async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = (...a) => console.log("%cTweetshelf", "color:#d9480f;font-weight:bold", ...a);
@@ -31,15 +31,93 @@
   const unwrap = (r) => (r && r.tweet && !r.legacy ? r.tweet : r);
   const ARTICLE_RE = /\s*https?:\/\/(?:x|twitter)\.com\/i\/article\/\d+\S*/g;
 
-  // Texto entero de un Artículo de X: viene como texto plano o como bloques de contenido.
+  // Texto entero de un Artículo de X en Markdown (títulos, listas, negritas, enlaces e imágenes). Viene como
+  // bloques de contenido al estilo Draft.js; si no, como texto plano.
+  const STYLE_MD = { BOLD: "**", ITALIC: "*", STRIKETHROUGH: "~~" };
+  const BLOCK_MD = { "header-one": "# ", "header-two": "## ", "header-three": "### ", "header-four": "#### ",
+    "unordered-list-item": "- ", "ordered-list-item": "1. ", blockquote: "> " };
+
+  function inlineMd(block, entity) {
+    const text = block.text || "";
+    const spans = [];
+    const wrap = (offset, length, before, after) => {
+      // Sin espacios dentro de las marcas, que Markdown no las entiende así.
+      let start = offset, end = offset + length;
+      while (start < end && /\s/.test(text[start])) start++;
+      while (end > start && /\s/.test(text[end - 1])) end--;
+      if (end > start) spans.push({ start, end, before, after });
+    };
+    for (const r of block.entityRanges || []) {
+      const e = entity(r.key);
+      const url = e?.data?.url || e?.data?.href;
+      if (/^LINK$/i.test(e?.type || "") && /^https?:/.test(url || "")) wrap(r.offset, r.length, "[", `](${url})`);
+    }
+    for (const r of block.inlineStyleRanges || []) {
+      const md = STYLE_MD[String(r.style).toUpperCase()];
+      if (md) wrap(r.offset, r.length, md, md);
+    }
+    // Las marcas se anidan: la que abre antes (o es más larga) cierra después. Las que se solapan se recortan.
+    spans.sort((x, y) => x.start - y.start || y.end - x.end);
+    const stack = [];
+    for (const sp of spans) {
+      while (stack.length && stack[stack.length - 1].end <= sp.start) stack.pop();
+      if (stack.length && sp.end > stack[stack.length - 1].end) sp.end = stack[stack.length - 1].end;
+      stack.push(sp);
+    }
+    const open = Array.from({ length: text.length + 1 }, () => "");
+    const close = Array.from({ length: text.length + 1 }, () => "");
+    for (const sp of spans) {
+      open[sp.start] += sp.before;
+      close[sp.end] = sp.after + close[sp.end];
+    }
+    let out = "";
+    for (let i = 0; i <= text.length; i++) out += close[i] + open[i] + (text[i] ?? "");
+    return out;
+  }
+
   function articleText(art) {
     if (!art) return null;
-    if (typeof art.plain_text === "string" && art.plain_text.trim()) return art.plain_text.trim();
     const blocks = art.content_state?.blocks;
-    if (Array.isArray(blocks)) {
-      const t = blocks.map((b) => b?.text || "").filter((x) => x.trim()).join("\n\n").trim();
-      if (t) return t;
+    if (Array.isArray(blocks) && blocks.length) {
+      const map = art.content_state.entityMap || {};
+      const entities = Array.isArray(map) ? Object.fromEntries(map.map((e) => [String(e.key), e.value])) : map;
+      const entity = (k) => entities[String(k)] || null;
+      const mediaUrl = {};
+      for (const m of art.media_entities || []) {
+        const url = m.media_info?.original_img_url || m.media_info?.preview_image?.original_img_url || m.media_url_https;
+        if (url) for (const k of [m.media_id, m.media_key, m.id]) if (k) mediaUrl[String(k)] = url;
+      }
+      const out = [];
+      let prevList = null;
+      for (const b of blocks) {
+        if (b.type === "atomic") {
+          for (const r of b.entityRanges || []) {
+            const e = entity(r.key);
+            const type = String(e?.type || "").toUpperCase();
+            if (type === "MEDIA" || type === "IMAGE") {
+              for (const it of e.data?.mediaItems || [{ mediaId: e.data?.mediaId }]) {
+                const url = mediaUrl[String(it.mediaId)] || mediaUrl[String(it.localMediaId)] || e.data?.url || e.data?.src;
+                if (url) out.push(`![${(e.data?.caption || "").replace(/[\[\]]/g, "")}](${url})`);
+              }
+            } else if (type === "DIVIDER") out.push("---");
+            else if (type === "TWEET" && e.data?.tweetId) out.push(`https://x.com/i/status/${e.data.tweetId}`);
+          }
+          prevList = null;
+          continue;
+        }
+        if (!(b.text || "").trim()) { prevList = null; continue; }
+        const isList = /list-item$/.test(b.type);
+        const line = (BLOCK_MD[b.type] || "") + inlineMd(b, entity);
+        if (b.type === "code-block") out.push("```\n" + b.text + "\n```");
+        // Los elementos de una lista van seguidos; el resto, en párrafos.
+        else if (isList && prevList === b.type) out[out.length - 1] += "\n" + line;
+        else out.push(line);
+        prevList = isList ? b.type : null;
+      }
+      const md = out.join("\n\n").trim();
+      if (md) return md;
     }
+    if (typeof art.plain_text === "string" && art.plain_text.trim()) return art.plain_text.trim();
     return null;
   }
 
@@ -85,8 +163,19 @@
       // En las listas X sólo manda el principio de los tuits largos y de los artículos: luego se pide el resto.
       _needsFull: Boolean((art?.rest_id && !fullText) || (r.note_tweet && !note?.text)
         || (!note?.text && (r.legacy.full_text || "").length >= 250)),
+      _threadRoot: src === "quoted" ? null : threadRoot(r, text),
       _quoted: quoted,
     };
+  }
+
+  // ¿Es parte de un hilo del propio autor? Devuelve el id del primer tuit del hilo.
+  function threadRoot(r, text) {
+    const L = r.legacy;
+    const authorId = L.user_id_str || r.core?.user_results?.result?.rest_id;
+    if (L.self_thread?.id_str) return L.self_thread.id_str;
+    if (L.in_reply_to_user_id_str && L.in_reply_to_user_id_str === authorId) return L.conversation_id_str || null;
+    if (L.reply_count > 0 && /🧵|👇|\bhilo\b|\bthread\b|(^|\s)1\/\d*(\s|$)/i.test(text)) return r.rest_id;
+    return null;
   }
 
   function addTweet(raw, src) {
@@ -95,6 +184,7 @@
     const quoted = it._quoted;
     delete it._quoted;
     if (!it._needsFull) delete it._needsFull;
+    if (!it._threadRoot) delete it._threadRoot;
     const isNew = !items.has(it.id);
     // Un tuit que ya teníamos como citado gana la fuente principal si además está en la lista.
     if (isNew || items.get(it.id).source === "quoted") items.set(it.id, it);
@@ -215,18 +305,17 @@
         }
       }
     }
-    if (!found[OPS[0]]) {
+    if (!OPS.every((o) => found[o])) {
       const urls = new Set([
         ...[...document.querySelectorAll("script[src], link[href$='.js']")].map((e) => e.src || e.href),
         ...performance.getEntriesByType("resource").map((e) => e.name),
       ].filter((n) => /abs\.twimg\.com\/.+\.js/.test(n)));
       for (const src of [...urls].sort((x, y) => /\/main\./.test(y) - /\/main\./.test(x))) {
         try { searchCode(await (await fetch(src)).text(), found); } catch { /* probamos el siguiente */ }
-        if (found[OPS[0]]) break;
+        if (OPS.every((o) => found[o])) break;
       }
     }
-    const op = OPS.find((o) => found[o]);
-    return op ? { op, qid: found[op] } : null;
+    return found;
   }
 
   // Busca en una respuesta el tuit con ese id (TweetDetail devuelve la conversación entera).
@@ -241,12 +330,8 @@
     return hit;
   }
 
-  async function fetchFullTweet({ op, qid }, id) {
+  async function gql(op, qid, variables) {
     const features = { ...api.features };
-    const variables = op === "TweetDetail"
-      ? { focalTweetId: id, with_rux_injections: false, rankingMode: "Relevance", includePromotedContent: false,
-          withCommunity: true, withQuickPromoteEligibilityTweetFields: false, withBirdwatchNotes: false, withVoice: true }
-      : { tweetId: id, withCommunity: false, includePromotedContent: false, withVoice: false };
     for (let attempt = 0; attempt < 4; attempt++) {
       const q = new URLSearchParams({
         variables: JSON.stringify(variables),
@@ -266,18 +351,83 @@
       const missing = (body?.errors || []).flatMap((e) => (e.message || "").match(/features cannot be null: (.+)/)?.[1].split(/,\s*/) || []);
       if (!r.ok && missing.length) { missing.forEach((f) => (features[f.trim()] = true)); continue; }
       if (!r.ok) throw new Error(`X respondió ${r.status}`);
-      return findTweet(body?.data, id);
+      return body?.data || null;
     }
     return null;
   }
 
-  async function completeTexts() {
+  const detailVars = (id) => ({ focalTweetId: id, with_rux_injections: false, rankingMode: "Relevance", includePromotedContent: false,
+    withCommunity: true, withQuickPromoteEligibilityTweetFields: false, withBirdwatchNotes: false, withVoice: true });
+
+  async function fetchFullTweet(found, id) {
+    if (found.TweetResultByRestId) {
+      return findTweet(await gql("TweetResultByRestId", found.TweetResultByRestId,
+        { tweetId: id, withCommunity: false, includePromotedContent: false, withVoice: false }), id);
+    }
+    return findTweet(await gql("TweetDetail", found.TweetDetail, detailVars(id)), id);
+  }
+
+  // Pasa a un elemento lo que trae la versión completa de su tuit (texto entero y cuerpo del artículo).
+  function applyFull(it, full) {
+    if (!full) return false;
+    let fixed = false;
+    if (full.text && full.text !== it.text) { it.text = full.text; it.links = full.links; fixed = true; }
+    if (full.x_article?.text) {
+      const fresh = Object.fromEntries(Object.entries(full.x_article).filter(([, v]) => v));
+      it.x_article = { ...it.x_article, ...fresh };
+      fixed = true;
+    }
+    return fixed;
+  }
+
+  // Hilos: pide la conversación y sigue la cadena de respuestas del autor a sí mismo desde el primer tuit.
+  async function fetchThreads(found) {
+    const pending = [...items.values()].filter((it) => it._threadRoot);
+    if (!pending.length) return;
+    if (!found.TweetDetail) {
+      log(`Hay ${pending.length} posibles hilos, pero no encuentro cómo pedirlos.`,
+        "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
+      return;
+    }
+    log(`Buscando ${pending.length} posibles hilos…`);
+    let threads = 0, done = 0;
+    for (const it of pending) {
+      if (window.__stopExport) break;
+      try {
+        const data = await gql("TweetDetail", found.TweetDetail, detailVars(it._threadRoot));
+        const byId = {};
+        (function walk(o) {
+          if (!o || typeof o !== "object") return;
+          const t = unwrap(o);
+          if (t?.rest_id && t.legacy && !byId[t.rest_id]) byId[t.rest_id] = t;
+          for (const k in o) walk(o[k]);
+        })(data);
+        const authorOf = (t) => t.legacy.user_id_str || t.core?.user_results?.result?.rest_id;
+        const chain = [];
+        let cur = byId[it._threadRoot];
+        while (cur && chain.length < 100) {
+          chain.push(cur);
+          const prev = cur;
+          cur = Object.values(byId).find((t) => t.legacy.in_reply_to_status_id_str === prev.rest_id && authorOf(t) === authorOf(prev));
+        }
+        if (chain.length > 1 && chain.some((t) => t.rest_id === it.id)) {
+          it.thread = chain.map((t) => toItem(t, it.source)).map((t) => ({ id: t.id, text: t.text, media: t.media, links: t.links }));
+          threads++;
+        }
+        if (it._needsFull && byId[it.id] && applyFull(it, toItem(byId[it.id], it.source))) delete it._needsFull;
+      } catch (e) { log(`No he podido traer el hilo de ${it.id}: ${e.message}`); }
+      if (++done % 10 === 0) log(`${done}/${pending.length} revisados…`);
+      await sleep(700);
+    }
+    log(`Hilos encontrados: ${threads}.`);
+  }
+
+  async function completeTexts(found) {
     const pending = [...items.values()].filter((it) => it._needsFull);
-    if (!pending.length || !api) return;
-    const query = await findTweetQuery();
-    if (!query) {
+    if (!pending.length) return;
+    if (!found.TweetResultByRestId && !found.TweetDetail) {
       log("No encuentro cómo pedir los tuits completos; algunos textos largos quedarán recortados.",
-        "Prueba a abrir un tuit cualquiera, volver a esta lista y lanzar el script otra vez.");
+        "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
       return;
     }
     log(`Pidiendo el texto completo de ${pending.length} tuits largos o con artículo…`);
@@ -285,15 +435,7 @@
     for (const it of pending) {
       if (window.__stopExport) break;
       try {
-        const full = toItem(await fetchFullTweet(query, it.id), it.source);
-        if (full) {
-          if (full.text && full.text !== it.text) { it.text = full.text; it.links = full.links; fixed++; }
-          if (full.x_article?.text) {
-            const fresh = Object.fromEntries(Object.entries(full.x_article).filter(([, v]) => v));
-            it.x_article = { ...it.x_article, ...fresh };
-            fixed++;
-          }
-        }
+        if (applyFull(it, toItem(await fetchFullTweet(found, it.id), it.source))) fixed++;
       } catch (e) { log(`No he podido completar ${it.id}: ${e.message}`); }
       if (++done % 10 === 0) log(`${done}/${pending.length} completados…`);
       await sleep(700);
@@ -345,14 +487,18 @@
     if (!items.size) await exportViaPage();
   }
   window.__stopExport = false; // parar la lista no impide completar lo recogido
-  try {
-    await completeTexts();
-  } catch (e) {
-    log(`No he podido completar los textos largos (${e.message}).`);
+  if (api) {
+    try {
+      const found = await findTweetQuery();
+      await fetchThreads(found);
+      await completeTexts(found);
+    } catch (e) {
+      log(`No he podido completar los textos largos o los hilos (${e.message}).`);
+    }
   }
 
   const list = [...items.values()];
-  list.forEach((it) => delete it._needsFull);
+  list.forEach((it) => { delete it._needsFull; delete it._threadRoot; });
   const quotedCount = list.filter((i) => i.source === "quoted").length;
   const blob = new Blob([JSON.stringify({ source, exported_at: new Date().toISOString(), items: list }, null, 2)], { type: "application/json" });
   const a = Object.assign(document.createElement("a"), {
@@ -361,5 +507,6 @@
   });
   document.body.appendChild(a);
   a.click();
-  log(`Listo: ${list.length - quotedCount} ${source === "like" ? "me gusta" : "guardados"} y ${quotedCount} tuits citados exportados.`);
+  const threadCount = list.filter((i) => i.thread).length;
+  log(`Listo: ${list.length - quotedCount} ${source === "like" ? "me gusta" : "guardados"} y ${quotedCount} tuits citados exportados${threadCount ? `, con ${threadCount} hilos` : ""}.`);
 })();

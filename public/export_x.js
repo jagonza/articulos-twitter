@@ -168,13 +168,22 @@
     };
   }
 
+  // Pistas de que un tuit abre un hilo: 🧵, «hilo», «1/», acabar en «:» o «👇», o anunciar una lista
+  // («7 prompts», «5 herramientas», «10 things»…).
+  const THREAD_HINT = new RegExp([
+    "🧵", "👇", "⬇️?", "\\bhilo\\b", "\\bthread\\b", "(^|\\s)1\\s?\\/", "[:：…]$",
+    "\\b\\d{1,2}\\s+(?:\\p{L}+\\s+){0,2}(?:prompts?|pasos|ideas|claves|herramientas|trucos|consejos|cosas|formas|maneras|razones|tips|lecciones|recursos|libros|apps|webs|ejemplos|errores|reglas|things|ways|steps|tools|lessons|tricks|resources|books|examples|mistakes|rules)\\b",
+  ].join("|"), "iu");
+
   // ¿Es parte de un hilo del propio autor? Devuelve el id del primer tuit del hilo.
   function threadRoot(r, text) {
     const L = r.legacy;
     const authorId = L.user_id_str || r.core?.user_results?.result?.rest_id;
     if (L.self_thread?.id_str) return L.self_thread.id_str;
     if (L.in_reply_to_user_id_str && L.in_reply_to_user_id_str === authorId) return L.conversation_id_str || null;
-    if (L.reply_count > 0 && /🧵|👇|\bhilo\b|\bthread\b|(^|\s)1\/\d*(\s|$)/i.test(text)) return r.rest_id;
+    if (L.reply_count === 0) return null;
+    // Sin marca de X, se adivina por el texto: con `window.__allThreads = true` se revisan todos los que tienen respuestas.
+    if (window.__allThreads || THREAD_HINT.test(text.trim())) return r.rest_id;
     return null;
   }
 

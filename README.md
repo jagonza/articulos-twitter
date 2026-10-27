@@ -41,7 +41,7 @@ La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`sch
 3. **Conecta el extractor.** En GitHub: *Settings → Secrets and variables → Actions → New repository secret*:
    - `TWEETSHELF_URL`: la dirección del Worker, p. ej. `https://articulos-twitter.tu-subdominio.workers.dev`.
    - `TWEETSHELF_TOKEN`: el mismo valor que `API_TOKEN`.
-4. *(Opcional)* **Botón «extraer ahora».** Crea un [token de GitHub de grano fino](https://github.com/settings/personal-access-tokens/new) sólo para este repo con permiso *Actions: Read and write* y añádelo al Worker como secretos `GITHUB_TOKEN` (el token) y `GITHUB_REPO` (`jagonza/articulos-twitter`). Sin él, los artículos se extraen en la siguiente pasada de 3 horas.
+4. *(Opcional)* **Botón «extraer ahora».** Crea un [token de GitHub de grano fino](https://github.com/settings/personal-access-tokens/new) sólo para este repo con permiso *Actions: Read and write* y añádelo al Worker como secretos `GITHUB_TOKEN` (el token) y `GITHUB_REPO` (`jagonza/articulos-twitter`). Sin él, los artículos se extraen en la siguiente pasada de 3 horas y la web te avisa de que falta. Con él, la barra de arriba sigue la ejecución (en cola, extrayendo, terminada o fallida, con enlace al registro de GitHub).
 
 ## Cómo conseguir tus favoritos
 

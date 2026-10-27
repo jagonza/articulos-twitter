@@ -96,8 +96,6 @@ select, .btn, .icon-btn {
 .only-mobile { display: none; }
 
 .progress { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--muted); margin-bottom: 8px; }
-.progress .bar { flex: 1; height: 6px; background: var(--line); border-radius: 99px; overflow: hidden; }
-.progress .bar span { display: block; height: 100%; background: var(--accent); width: 0; transition: width .4s; }
 .filters { display: flex; gap: 6px; flex-wrap: wrap; }
 .summary { margin: 6px 0 14px; font-size: 13px; }
 

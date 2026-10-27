@@ -1,7 +1,10 @@
 // Tweetshelf: interfaz en JS sin dependencias.
+import { parseFile } from "./importers.js";
+
 const $ = (s, el = document) => el.querySelector(s);
 const api = async (path, opts = {}) => {
   const r = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  if (r.status === 401) { location.href = "/login"; throw new Error("Sesión caducada"); }
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).detail || r.statusText);
   return r.json();
 };
@@ -47,6 +50,8 @@ async function loadStats() {
   $("#authorList").innerHTML = s.authors.map((a) =>
     `<li data-author="${esc(a.handle)}" class="${state.author === a.handle ? "active" : ""}">${a.avatar ? `<img src="${esc(a.avatar)}" alt="" style="border-radius:50%">` : ""}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></li>`).join("");
   $("#empty").classList.toggle("hidden", s.counts.all + s.counts.archived > 0);
+  $("#retryBtn").classList.toggle("hidden", !s.failed);
+  $("#retryBtn").textContent = `↻ Reintentar ${s.failed} fallido${s.failed === 1 ? "" : "s"} · `;
   state.stats = s;
 }
 
@@ -206,42 +211,51 @@ function syncItem(full) {
 function openImport() { $("#importResult").textContent = ""; $("#importDlg").showModal(); }
 window.openImport = openImport;
 
+const CHUNK = 500;
+
 async function uploadFiles(files) {
   const out = [];
+  const show = (extra = "") => { $("#importResult").innerHTML = out.join("<br>") + (extra ? `<br>${extra}` : ""); };
   for (const f of files) {
-    const fd = new FormData();
-    fd.append("file", f);
     try {
-      const r = await fetch("/api/import", { method: "POST", body: fd });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.detail);
-      out.push(`✅ <b>${esc(f.name)}</b>: ${j.found} encontrados, ${j.added} nuevos, ${j.updated} actualizados`);
+      show(`⏳ Leyendo <b>${esc(f.name)}</b>…`);
+      const items = await parseFile(f, (msg) => show(`⏳ ${esc(msg)}`));
+      const total = { found: items.length, added: 0, updated: 0 };
+      for (let i = 0; i < items.length; i += CHUNK) {
+        show(`⏳ Subiendo <b>${esc(f.name)}</b>: ${Math.min(i + CHUNK, items.length)}/${items.length}`);
+        const r = await api("/api/import", { method: "POST", body: JSON.stringify({ items: items.slice(i, i + CHUNK) }) });
+        total.added += r.added; total.updated += r.updated;
+      }
+      out.push(`✅ <b>${esc(f.name)}</b>: ${total.found} encontrados, ${total.added} nuevos, ${total.updated} actualizados`);
     } catch (e) {
       out.push(`❌ <b>${esc(f.name)}</b>: ${esc(e.message)}`);
     }
-    $("#importResult").innerHTML = out.join("<br>");
+    show();
   }
-  refresh();
-  pollProgress();
+  await refresh();
+  extractNow(true);
 }
 
-let polling = false;
+// La extracción de artículos la hace GitHub Actions cada pocas horas; aquí sólo mostramos lo pendiente.
+async function extractNow(quiet = false) {
+  const r = await api("/api/extract-now", { method: "POST" }).catch(() => ({}));
+  if (!quiet) toast(r.triggered ? "Extracción lanzada, tardará unos minutos" : "Se extraerán en la próxima pasada automática");
+  pollProgress();
+}
+window.extractNow = extractNow;
+
+let pollTimer;
 async function pollProgress() {
-  if (polling) return;
-  polling = true;
-  let lastDone = -1;
-  while (true) {
-    const p = await api("/api/progress");
-    const busy = p.running || p.pending > 0;
-    $("#progress").classList.toggle("hidden", !busy);
-    if (!busy) break;
-    $("#progressBar").style.width = `${p.total ? (100 * p.done) / p.total : 0}%`;
-    $("#progressText").textContent = `Extrayendo artículos ${p.done}/${p.total}`;
-    if (p.done !== lastDone && p.done % 10 === 0) { lastDone = p.done; refresh(); }
-    await new Promise((r) => setTimeout(r, 1500));
-  }
-  polling = false;
-  refresh();
+  clearTimeout(pollTimer);
+  const p = await api("/api/progress");
+  $("#progress").classList.toggle("hidden", !p.pending);
+  if (!p.pending) return;
+  $("#progressText").innerHTML = `⏳ ${p.pending} artículo${p.pending === 1 ? "" : "s"} pendiente${p.pending === 1 ? "" : "s"} de extraer
+    · <a href="#" onclick="extractNow(); return false">extraer ahora</a>`;
+  const before = state.stats?.pending;
+  if (before !== undefined && before !== p.pending) refresh();
+  if (state.stats) state.stats.pending = p.pending;
+  pollTimer = setTimeout(pollProgress, 30000);
 }
 
 // ------------------------------------------------------------------ eventos
@@ -290,6 +304,12 @@ document.addEventListener("click", async (e) => {
 });
 
 $("#scrim").onclick = closeDrawer;
+$("#retryBtn").onclick = async (e) => {
+  e.preventDefault();
+  const r = await api("/api/retry-failed", { method: "POST" });
+  toast(`${r.queued} en cola para reintentar`);
+  refresh(); pollProgress();
+};
 $("#importBtn").onclick = openImport;
 $("#moreBtn").onclick = () => load(true);
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");

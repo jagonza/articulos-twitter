@@ -1,0 +1,331 @@
+// API de Tweetshelf en Cloudflare Workers + D1.
+//
+// Secretos (Settings → Variables and secrets en el panel de Cloudflare):
+//   APP_PASSWORD  contraseña para entrar en la web
+//   API_TOKEN     token que usa el extractor de GitHub Actions
+// Opcionales, para el botón «Extraer ahora»:
+//   GITHUB_TOKEN  token de GitHub con permiso Actions: write sobre el repo
+//   GITHUB_REPO   p. ej. "jagonza/articulos-twitter"
+
+const SESSION_DAYS = 60;
+const COOKIE = "ts_session";
+
+const json = (data, status = 200, headers = {}) =>
+  new Response(JSON.stringify(data), { status, headers: { "Content-Type": "application/json", ...headers } });
+const err = (status, detail) => json({ detail }, status);
+
+// ------------------------------------------------------------------ autenticación
+
+async function hmac(secret, msg) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret), { name: "HMAC", hash: "SHA-256" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(msg));
+  return [...new Uint8Array(sig)].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function safeEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let r = 0;
+  for (let i = 0; i < a.length; i++) r |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return r === 0;
+}
+
+async function makeSession(env) {
+  const exp = Date.now() + SESSION_DAYS * 864e5;
+  return `${exp}.${await hmac(env.APP_PASSWORD, `session:${exp}`)}`;
+}
+
+async function isAuthed(req, env) {
+  const auth = req.headers.get("Authorization") || "";
+  if (env.API_TOKEN && auth.startsWith("Bearer ") && safeEqual(auth.slice(7), env.API_TOKEN)) return true;
+  const m = (req.headers.get("Cookie") || "").match(new RegExp(`${COOKIE}=([\\d]+)\\.([0-9a-f]+)`));
+  if (!m || Number(m[1]) < Date.now()) return false;
+  return safeEqual(m[2], await hmac(env.APP_PASSWORD, `session:${m[1]}`));
+}
+
+const cookieHeader = (value, maxAge) =>
+  `${COOKIE}=${value}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${maxAge}`;
+
+// ------------------------------------------------------------------ búsqueda
+
+// El índice items_fts se mantiene solo mediante triggers (ver schema.sql).
+
+function ftsQuery(q) {
+  return q.split(/\s+/).map((t) => t.replace(/"/g, "")).filter(Boolean).map((t) => `"${t}"*`).join(" ");
+}
+
+const SORTS = {
+  recent: "CAST(i.id AS INTEGER) DESC",
+  oldest: "CAST(i.id AS INTEGER) ASC",
+  longest: "COALESCE(i.article_words, 0) DESC",
+  shortest: "CASE WHEN i.article_words IS NULL THEN 1 ELSE 0 END, i.article_words ASC",
+  random: "RANDOM()",
+  updated: "i.updated_at DESC",
+};
+const VIEWS = {
+  all: "i.archived = 0",
+  favorites: "i.favorite = 1",
+  unread: "i.is_read = 0 AND i.archived = 0 AND i.article_status = 'ok'",
+  articles: "i.article_status = 'ok' AND i.archived = 0",
+  tweets: "i.article_status IN ('none', 'failed') AND i.archived = 0",
+  notes: "i.note != ''",
+  archived: "i.archived = 1",
+};
+// Columnas de la lista (sin el texto completo del artículo, que pesa).
+const LIST_COLS = `i.id, i.sources, i.tweet_text, i.author_handle, i.author_name, i.author_avatar, i.tweet_created, i.tweet_url,
+  i.urls, i.media, i.article_url, i.article_status, i.article_title, i.article_author, i.article_site, i.article_date,
+  i.article_image, i.article_excerpt, i.article_words, i.article_error, i.domain, i.favorite, i.is_read, i.archived,
+  i.note, i.tags, i.updated_at`;
+
+function toItem(r) {
+  return {
+    ...r,
+    pk: undefined,
+    urls: JSON.parse(r.urls || "[]"),
+    media: JSON.parse(r.media || "[]"),
+    tags: JSON.parse(r.tags || "[]").sort(),
+    sources: (r.sources || "").split(",").filter(Boolean),
+    favorite: !!r.favorite,
+    is_read: !!r.is_read,
+    archived: !!r.archived,
+  };
+}
+
+async function listItems(db, p) {
+  const q = (p.get("q") || "").trim();
+  const where = [VIEWS[p.get("view")] || VIEWS.all];
+  const params = [];
+  let join = "", extra = "";
+  if (q) {
+    join = "JOIN items_fts f ON f.rowid = i.pk";
+    where.push("items_fts MATCH ?");
+    params.push(ftsQuery(q));
+    extra = ", snippet(items_fts, -1, char(1), char(2), '…', 24) AS snippet";
+  }
+  if (p.get("tag")) { where.push("EXISTS (SELECT 1 FROM json_each(i.tags) WHERE value = ?)"); params.push(p.get("tag")); }
+  if (p.get("domain")) { where.push("i.domain = ?"); params.push(p.get("domain")); }
+  if (p.get("source")) { where.push("(',' || i.sources || ',') LIKE ?"); params.push(`%,${p.get("source")},%`); }
+  if (p.get("author")) { where.push("i.author_handle = ?"); params.push(p.get("author")); }
+  const sort = p.get("sort") || "recent";
+  const order = q && sort === "relevance" ? "rank" : SORTS[sort] || SORTS.recent;
+  const limit = Math.min(Number(p.get("limit")) || 60, 200);
+  const offset = Number(p.get("offset")) || 0;
+  const w = where.join(" AND ");
+  const [count, rows] = await db.batch([
+    db.prepare(`SELECT COUNT(*) AS n FROM items i ${join} WHERE ${w}`).bind(...params),
+    db.prepare(`SELECT ${LIST_COLS} ${extra} FROM items i ${join} WHERE ${w} ORDER BY ${order} LIMIT ? OFFSET ?`).bind(...params, limit, offset),
+  ]);
+  return { total: count.results[0].n, items: rows.results.map(toItem) };
+}
+
+// ------------------------------------------------------------------ importación
+
+const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, author_name, author_avatar, tweet_created, tweet_url, urls, media, article_status)
+  SELECT json_extract(value, '$.id'), json_extract(value, '$.source'), coalesce(json_extract(value, '$.tweet_text'), ''),
+         json_extract(value, '$.author_handle'), json_extract(value, '$.author_name'), json_extract(value, '$.author_avatar'),
+         json_extract(value, '$.tweet_created'), json_extract(value, '$.tweet_url'),
+         coalesce(json_extract(value, '$.urls'), '[]'), coalesce(json_extract(value, '$.media'), '[]'),
+         CASE WHEN json_array_length(coalesce(json_extract(value, '$.urls'), '[]')) > 0 THEN 'pending' ELSE 'none' END
+  FROM json_each(?1) WHERE true
+  ON CONFLICT(id) DO UPDATE SET
+    sources = CASE WHEN instr(',' || items.sources || ',', ',' || excluded.sources || ',') > 0 THEN items.sources
+                   ELSE items.sources || ',' || excluded.sources END,
+    author_handle = coalesce(items.author_handle, excluded.author_handle),
+    author_name = coalesce(items.author_name, excluded.author_name),
+    author_avatar = coalesce(items.author_avatar, excluded.author_avatar),
+    tweet_created = coalesce(items.tweet_created, excluded.tweet_created),
+    tweet_url = CASE WHEN items.author_handle IS NULL THEN excluded.tweet_url ELSE items.tweet_url END,
+    media = CASE WHEN items.media = '[]' THEN excluded.media ELSE items.media END,
+    article_status = CASE WHEN items.urls = '[]' AND excluded.urls != '[]' THEN 'pending' ELSE items.article_status END,
+    urls = CASE WHEN items.urls = '[]' THEN excluded.urls ELSE items.urls END`;
+
+async function importItems(db, items) {
+  const clean = items
+    .filter((it) => it && /^\d+$/.test(String(it.id)))
+    .map((it) => ({ ...it, id: String(it.id), source: it.source === "like" ? "like" : "bookmark",
+      urls: JSON.stringify(it.urls || []), media: JSON.stringify(it.media || []) }));
+  if (!clean.length) return { found: items.length, added: 0, updated: 0 };
+  const ids = JSON.stringify(clean.map((it) => it.id));
+  const [existing] = await db.batch([
+    db.prepare("SELECT COUNT(*) AS n FROM items WHERE id IN (SELECT value FROM json_each(?1))").bind(ids),
+    db.prepare(UPSERT).bind(JSON.stringify(clean)),
+  ]);
+  const updated = existing.results[0].n;
+  return { found: items.length, added: clean.length - updated, updated };
+}
+
+// ------------------------------------------------------------------ extracción (la hace GitHub Actions)
+
+const ARTICLE_FIELDS = ["article_url", "article_status", "article_title", "article_author", "article_site", "article_date",
+  "article_image", "article_excerpt", "article_text", "article_words", "article_error", "domain"];
+
+async function saveArticles(db, results) {
+  const rows = results.filter((r) => r && r.id).map((r) => ({ ...r, id: String(r.id), tags: JSON.stringify(r.tags || []) }));
+  if (!rows.length) return { saved: 0 };
+  const sets = ARTICLE_FIELDS.map((f) => `${f} = json_extract(j.value, '$.${f}')`).join(", ");
+  await db.batch([
+    db.prepare(`UPDATE items SET ${sets},
+        tags = (SELECT json_group_array(value) FROM (SELECT value FROM json_each(items.tags) UNION SELECT value FROM json_each(json_extract(j.value, '$.tags')))),
+        updated_at = datetime('now')
+      FROM json_each(?1) AS j WHERE items.id = json_extract(j.value, '$.id')`).bind(JSON.stringify(rows)),
+  ]);
+  return { saved: rows.length };
+}
+
+async function triggerExtraction(env) {
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return { triggered: false, reason: "not_configured" };
+  const r = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/extract.yml/dispatches`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "tweetshelf" },
+    body: JSON.stringify({ ref: env.GITHUB_REF || "main" }),
+  });
+  return { triggered: r.ok, status: r.status };
+}
+
+// ------------------------------------------------------------------ resto de la API
+
+async function stats(db) {
+  const [counts, tags, domains, authors] = await db.batch([
+    db.prepare(`SELECT
+        SUM(archived = 0) AS "all", SUM(favorite = 1) AS favorites,
+        SUM(is_read = 0 AND archived = 0 AND article_status = 'ok') AS unread,
+        SUM(article_status = 'ok' AND archived = 0) AS articles,
+        SUM(article_status IN ('none', 'failed') AND archived = 0) AS tweets,
+        SUM(note != '') AS notes, SUM(archived = 1) AS archived,
+        SUM(CASE WHEN is_read = 0 AND article_status = 'ok' THEN coalesce(article_words, 0) ELSE 0 END) AS words_unread,
+        SUM(article_status = 'pending') AS pending, SUM(article_status = 'failed') AS failed
+      FROM items`),
+    db.prepare("SELECT j.value AS tag, COUNT(*) AS n FROM items, json_each(items.tags) j GROUP BY j.value ORDER BY n DESC, tag LIMIT 60"),
+    db.prepare("SELECT domain, COUNT(*) AS n FROM items WHERE domain IS NOT NULL GROUP BY domain ORDER BY n DESC LIMIT 25"),
+    db.prepare(`SELECT author_handle AS handle, MAX(author_name) AS name, MAX(author_avatar) AS avatar, COUNT(*) AS n
+      FROM items WHERE author_handle IS NOT NULL GROUP BY author_handle ORDER BY n DESC LIMIT 15`),
+  ]);
+  const c = counts.results[0];
+  const { words_unread, pending, failed, ...views } = c;
+  for (const k in views) views[k] = views[k] || 0;
+  return { counts: views, words_unread: words_unread || 0, pending: pending || 0, failed: failed || 0,
+    tags: tags.results, domains: domains.results, authors: authors.results };
+}
+
+async function patchItem(db, id, body) {
+  const fields = {};
+  for (const k of ["favorite", "is_read", "archived"]) if (typeof body[k] === "boolean") fields[k] = body[k] ? 1 : 0;
+  if (typeof body.note === "string") fields.note = body.note.slice(0, 20000);
+  if (Array.isArray(body.tags)) {
+    fields.tags = JSON.stringify([...new Set(body.tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 30));
+  }
+  const stmts = [];
+  if (Object.keys(fields).length) {
+    stmts.push(db.prepare(`UPDATE items SET ${Object.keys(fields).map((k) => `${k} = ?`).join(", ")}, updated_at = datetime('now') WHERE id = ?`)
+      .bind(...Object.values(fields), id));
+  }
+  stmts.push(db.prepare(`SELECT ${LIST_COLS} FROM items i WHERE id = ?`).bind(id));
+  const res = await db.batch(stmts);
+  const row = res[res.length - 1].results[0];
+  return row ? json(toItem(row)) : err(404, "No existe");
+}
+
+function exportMarkdown(items) {
+  return items.map((it) => {
+    const lines = [`## ${it.article_title || it.tweet_text.slice(0, 80) + "…"}`, ""];
+    if (it.article_url) lines.push(`- Artículo: ${it.article_url}`);
+    lines.push(`- Tuit: ${it.tweet_url}${it.author_handle ? ` (@${it.author_handle})` : ""}`);
+    if (it.tags.length) lines.push(`- Etiquetas: ${it.tags.map((t) => "#" + t.replace(/ /g, "-")).join(" ")}`);
+    if (it.note) lines.push("", `> ${it.note}`);
+    return lines.join("\n") + "\n";
+  }).join("\n");
+}
+
+async function api(req, env, url) {
+  const db = env.DB;
+  const path = url.pathname;
+  const method = req.method;
+  const body = method === "POST" || method === "PATCH" ? await req.json().catch(() => ({})) : null;
+
+  if (path === "/api/items" && method === "GET") return json(await listItems(db, url.searchParams));
+  if (path === "/api/stats") return json(await stats(db));
+  if (path === "/api/import" && method === "POST") {
+    if (!Array.isArray(body.items) || body.items.length > 1000) return err(400, "Envía hasta 1000 elementos por petición");
+    return json(await importItems(db, body.items));
+  }
+  if (path === "/api/progress") {
+    const r = await db.prepare("SELECT SUM(article_status = 'pending') AS pending, SUM(article_status = 'failed') AS failed FROM items").first();
+    return json({ pending: r.pending || 0, failed: r.failed || 0 });
+  }
+  if (path === "/api/extract-now" && method === "POST") return json(await triggerExtraction(env));
+  if (path === "/api/retry-failed" && method === "POST") {
+    const r = await db.prepare("UPDATE items SET article_status = 'pending' WHERE article_status = 'failed'").run();
+    return json({ queued: r.meta.changes, ...(await triggerExtraction(env)) });
+  }
+  if (path === "/api/pending" && method === "GET") {
+    const limit = Math.min(Number(url.searchParams.get("limit")) || 30, 100);
+    const { results } = await db.prepare("SELECT id, urls FROM items WHERE article_status = 'pending' LIMIT ?").bind(limit).all();
+    return json(results.map((r) => ({ id: r.id, urls: JSON.parse(r.urls) })));
+  }
+  if (path === "/api/articles" && method === "POST") return json(await saveArticles(db, body.results || []));
+  if (path === "/api/export.json") {
+    const { results } = await db.prepare("SELECT * FROM items ORDER BY CAST(id AS INTEGER) DESC").all();
+    return json(results.map(toItem), 200, { "Content-Disposition": 'attachment; filename="tweetshelf.json"' });
+  }
+  if (path === "/api/export.md") {
+    const view = VIEWS[url.searchParams.get("view")] || VIEWS.favorites;
+    const { results } = await db.prepare(`SELECT ${LIST_COLS} FROM items i WHERE ${view} ORDER BY CAST(id AS INTEGER) DESC`).all();
+    return new Response(exportMarkdown(results.map(toItem)), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
+  }
+
+  const m = path.match(/^\/api\/items\/(\d+)(\/refetch)?$/);
+  if (m) {
+    const id = m[1];
+    if (m[2] && method === "POST") {
+      await db.prepare("UPDATE items SET article_status = 'pending' WHERE id = ? AND urls != '[]'").bind(id).run();
+      return json({ ok: true, ...(await triggerExtraction(env)) });
+    }
+    if (method === "GET") {
+      const row = await db.prepare("SELECT * FROM items WHERE id = ?").bind(id).first();
+      return row ? json(toItem(row)) : err(404, "No existe");
+    }
+    if (method === "PATCH") return patchItem(db, id, body);
+    if (method === "DELETE") {
+      await db.prepare("DELETE FROM items WHERE id = ?").bind(id).run();
+      return json({ ok: true });
+    }
+  }
+  return err(404, "Ruta desconocida");
+}
+
+// ------------------------------------------------------------------ entrada
+
+export default {
+  async fetch(req, env) {
+    const url = new URL(req.url);
+    if (!env.APP_PASSWORD) {
+      return new Response("Falta configurar el secreto APP_PASSWORD en Cloudflare (Settings → Variables and secrets).", { status: 503 });
+    }
+
+    if (url.pathname === "/api/login" && req.method === "POST") {
+      const { password } = await req.json().catch(() => ({}));
+      if (typeof password !== "string" || !safeEqual(password, env.APP_PASSWORD)) {
+        await new Promise((r) => setTimeout(r, 800)); // frena los intentos a ciegas
+        return err(401, "Contraseña incorrecta");
+      }
+      return json({ ok: true }, 200, { "Set-Cookie": cookieHeader(await makeSession(env), SESSION_DAYS * 86400) });
+    }
+    if (url.pathname === "/logout") {
+      return new Response(null, { status: 302, headers: { Location: "/login", "Set-Cookie": cookieHeader("", 0) } });
+    }
+    // Los assets sirven login.html como /login.
+    if (url.pathname === "/login" || url.pathname === "/login.html") return env.ASSETS.fetch(req);
+
+    if (!(await isAuthed(req, env))) {
+      if (url.pathname.startsWith("/api/")) return err(401, "Inicia sesión");
+      return Response.redirect(`${url.origin}/login`, 302);
+    }
+    if (url.pathname.startsWith("/api/")) {
+      try {
+        return await api(req, env, url);
+      } catch (e) {
+        return err(500, String(e.message || e));
+      }
+    }
+    return env.ASSETS.fetch(req);
+  },
+};

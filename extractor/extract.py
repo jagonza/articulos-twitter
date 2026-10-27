@@ -5,7 +5,13 @@ from urllib.parse import urlparse
 import httpx
 import trafilatura
 
-from .importers import is_twitter_url
+TWITTER_HOSTS = ("twitter.com", "x.com", "mobile.twitter.com", "pic.twitter.com", "pic.x.com")
+MAX_TEXT = 60_000  # caracteres; mantiene la base de datos gratuita holgada
+
+
+def is_twitter_url(url):
+    return domain_of(url) in TWITTER_HOSTS
+
 
 UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
 CHALLENGE_RE = re.compile(r"just a moment|client challenge|attention required|access denied|are you a robot|verify you are human", re.I)
@@ -70,7 +76,7 @@ def extract(urls, timeout=20):
         ctype = r.headers.get("content-type", "")
         if "html" not in ctype:
             return {**result, "article_status": "ok", "article_title": final.rsplit("/", 1)[-1] or final,
-                    "article_site": result["domain"], "_tags": auto_tags(final, 0)}
+                    "article_site": result["domain"], "tags": sorted(auto_tags(final, 0))}
 
         html = r.text
         doc = trafilatura.bare_extraction(html, url=final, with_metadata=True, include_comments=False,
@@ -90,10 +96,10 @@ def extract(urls, timeout=20):
             "article_date": doc.get("date"),
             "article_image": doc.get("image") or _meta(html, "og:image"),
             "article_excerpt": (excerpt or "")[:500],
-            "article_text": text,
+            "article_text": text[:MAX_TEXT],
             "article_words": words,
             "article_error": None,
-            "_tags": auto_tags(final, words),
+            "tags": sorted(auto_tags(final, words)),
         }
 
 

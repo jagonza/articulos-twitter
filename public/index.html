@@ -6,7 +6,7 @@
   <title>Tweetshelf</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/style.css">
+  <link rel="stylesheet" href="/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 </head>
 <body>
@@ -38,6 +38,10 @@
       <a href="/api/export.json" download>JSON completo</a> ·
       <a href="/api/export.md?view=favorites" target="_blank">Favoritos en Markdown</a>
     </section>
+    <section class="facet small muted">
+      <a href="#" id="retryBtn" class="hidden"></a>
+      <a href="/logout">Cerrar sesión</a>
+    </section>
   </aside>
 
   <main>
@@ -61,7 +65,7 @@
       <button class="btn primary" id="importBtn">＋ Importar</button>
     </header>
 
-    <div class="progress hidden" id="progress"><div class="bar"><span id="progressBar"></span></div><span id="progressText"></span></div>
+    <div class="progress hidden" id="progress"><span id="progressText"></span></div>
 
     <div class="filters" id="activeFilters"></div>
     <p class="summary muted" id="summary"></p>
@@ -90,7 +94,7 @@
       <input type="file" id="fileInput" multiple accept=".zip,.js,.json,.csv">
       <div class="big">⬆️</div>
       <strong>Arrastra aquí tus ficheros</strong>
-      <span class="muted small">.zip del archivo de X, like.js, o el JSON/CSV de tus guardados</span>
+      <span class="muted small">.zip del archivo de X (aunque pese gigas: se lee en tu navegador), like.js, o el JSON/CSV de tus guardados</span>
     </label>
     <div id="importResult" class="small"></div>
     <details>
@@ -106,6 +110,6 @@
   </dialog>
 
   <div class="toast hidden" id="toast"></div>
-  <script src="/static/app.js"></script>
+  <script type="module" src="/app.js"></script>
 </body>
 </html>

@@ -10,7 +10,7 @@ Tu estantería de favoritos de X/Twitter: importa tus *me gusta* y tus elementos
 - **Organiza**: favoritos ⭐, leído ✅, archivo, notas con autoguardado y etiquetas (manuales y automáticas según el sitio: vídeo, código, paper, newsletter, lectura larga…).
 - **Filtra** por vista (por leer, favoritos, artículos, sólo tuits, con notas, archivados), etiqueta, sitio y autor. Ordena por fecha, relevancia, duración de lectura o al azar.
 - **Modo lector**, **🎲 Sorpréndeme** (un artículo sin leer al azar), atajos de teclado (`/` buscar · `j`/`k` moverse · `Enter` abrir · `f` favorito · `r` leído · `e` archivar · `Esc` cerrar), tema claro/oscuro y móvil.
-- **Tuits citados** como elementos propios: se ven dentro del tuit que los cita y en el lector aparece «Citado por», así puedes quedarte sólo con el citado.
+- **Tuits citados** como elementos propios: se ven dentro del tuit que los cita y en el lector aparece «Citado por», con «Quedarme sólo con el citado» pasas favorito, notas y etiquetas al citado y el original se archiva (y se marca para quitar de X).
 - **Limpia X**: marca con 🧹 (o la tecla `x`) lo que ya tienes aquí, o todo lo importado, y copia un script que lo quita de tus guardados / me gusta de X.
 - **Exporta** a JSON completo o a Markdown (para Obsidian/Notion).
 

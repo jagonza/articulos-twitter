@@ -262,6 +262,25 @@ async function patchItem(db, id, body) {
   return row ? json(toItem(row)) : err(404, "No existe");
 }
 
+// «Quedarme sólo con el citado»: pasa favorito, notas y etiquetas al tuit citado y archiva el que cita
+// (marcándolo para quitar de X si sigue allí), así deja de aparecer en la biblioteca.
+async function keepQuoted(db, id) {
+  const parent = await db.prepare("SELECT quoted_id, favorite, note, tags, tweet_url FROM items WHERE id = ?").bind(id).first();
+  if (!parent?.quoted_id) return err(400, "Este tuit no cita a ningún otro guardado");
+  const note = parent.note ? `${parent.note}\n\n(del tuit que lo citaba: ${parent.tweet_url})` : "";
+  await db.batch([
+    db.prepare(`UPDATE items SET favorite = max(favorite, ?1),
+        note = CASE WHEN ?2 = '' THEN note WHEN note = '' THEN ?2 ELSE note || char(10) || char(10) || ?2 END,
+        tags = (SELECT json_group_array(value) FROM (SELECT value FROM json_each(items.tags) UNION SELECT value FROM json_each(?3))),
+        archived = 0, updated_at = datetime('now')
+      WHERE id = ?4`).bind(parent.favorite, note, parent.tags, parent.quoted_id),
+    db.prepare(`UPDATE items SET archived = 1,
+        x_status = CASE WHEN x_status IS NULL AND (instr(sources, 'bookmark') > 0 OR instr(sources, 'like') > 0) THEN 'remove' ELSE x_status END,
+        updated_at = datetime('now') WHERE id = ?`).bind(id),
+  ]);
+  return json({ ok: true, kept: parent.quoted_id });
+}
+
 // Qué quitar de X: lo marcado a mano, o todos los guardados / me gusta que ya están aquí.
 async function xCleanup(db, scope) {
   const where = {
@@ -331,9 +350,10 @@ async function api(req, env, url) {
     return new Response(exportMarkdown(results.map(toItem)), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
   }
 
-  const m = path.match(/^\/api\/items\/(\d+)(\/refetch)?$/);
+  const m = path.match(/^\/api\/items\/(\d+)(\/refetch|\/keep-quoted)?$/);
   if (m) {
     const id = m[1];
+    if (m[2] === "/keep-quoted" && method === "POST") return keepQuoted(db, id);
     if (m[2] && method === "POST") {
       await db.prepare("UPDATE items SET article_status = 'pending' WHERE id = ? AND urls != '[]'").bind(id).run();
       return json({ ok: true, ...(await triggerExtraction(env)) });

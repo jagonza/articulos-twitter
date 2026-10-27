@@ -81,7 +81,9 @@ function quoteBlock(q) {
   if (!q) return "";
   const who = q.author_handle ? `${esc(q.author_name || "")} <span>@${esc(q.author_handle)}</span>` : "<span>Tuit citado</span>";
   const title = q.article_status === "ok" && q.article_title ? `<div class="q-title">📰 ${esc(q.article_title)}</div>` : "";
+  const thumb = q.article_image || (q.media || [])[0];
   return `<div class="quote" data-open="${esc(q.id)}" title="Abrir el tuit citado">
+    ${thumb ? `<img class="q-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
     <div class="who">↪ ${who}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
 }
 
@@ -172,6 +174,8 @@ async function openItem(it) {
         ${tweetBlock(full, false)}
         ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="">`).join("")}</div>` : ""}
         ${quoteBlock(full.quoted)}
+        ${full.quoted && !full.archived ? `<p class="small"><button class="btn ghost small" data-d="keep-quoted"
+          title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : ""}
       </div>
       ${full.quoted_by?.length ? `<div class="side-box"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
 
@@ -315,6 +319,12 @@ document.addEventListener("click", async (e) => {
     if (k === "delete") {
       if (!confirm("¿Eliminar este elemento de tu estantería?")) return;
       await api(`/api/items/${it.id}`, { method: "DELETE" }); closeDrawer(); return refresh();
+    }
+    if (k === "keep-quoted") {
+      const r = await api(`/api/items/${it.id}/keep-quoted`, { method: "POST" });
+      toast("↪ Te quedas con el citado; el original queda archivado y marcado para quitar de X");
+      refresh();
+      return openItem({ id: r.kept });
     }
     if (k === "x_status") { await toggleXRemove(it); syncItem(it); return openItem(it); }
     if (k === "refetch") { await api(`/api/items/${it.id}/refetch`, { method: "POST" }); toast("Reextrayendo…"); pollProgress(); return openItem(it); }

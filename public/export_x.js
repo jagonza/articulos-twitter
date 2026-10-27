@@ -14,6 +14,7 @@
 // página mientras baja sola.
 //
 // Puedes parar antes con `window.__stopExport = true` en la consola: descargará lo recogido.
+// Al final pide uno a uno los tuits largos y los Artículos de X, que en la lista llegan recortados.
 (async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = (...a) => console.log("%cTweetshelf", "color:#d9480f;font-weight:bold", ...a);
@@ -22,11 +23,25 @@
   const TIMELINE_RE = /\/i\/api\/graphql\/[^/]+\/(Bookmarks|Likes)\?/;
 
   const items = new Map();
+  let api = null; // cabeceras y «features» de la petición de la lista, para reutilizarlas
   let source = /\/likes/.test(location.pathname) ? "like" : "bookmark";
 
   // ---------------------------------------------------------------- lectura de tuits de la API
 
   const unwrap = (r) => (r && r.tweet && !r.legacy ? r.tweet : r);
+  const ARTICLE_RE = /\s*https?:\/\/(?:x|twitter)\.com\/i\/article\/\d+\S*/g;
+
+  // Texto entero de un Artículo de X: viene como texto plano o como bloques de contenido.
+  function articleText(art) {
+    if (!art) return null;
+    if (typeof art.plain_text === "string" && art.plain_text.trim()) return art.plain_text.trim();
+    const blocks = art.content_state?.blocks;
+    if (Array.isArray(blocks)) {
+      const t = blocks.map((b) => b?.text || "").filter((x) => x.trim()).join("\n\n").trim();
+      if (t) return t;
+    }
+    return null;
+  }
 
   function toItem(raw, src) {
     const r = unwrap(raw);
@@ -36,14 +51,18 @@
     const note = r.note_tweet?.note_tweet_results?.result;
     const ents = r.legacy.entities || {};
     const urlEnts = [...(ents.urls || []), ...(note?.entity_set?.urls || [])];
-    // Sustituye los t.co por la URL real y quita los que apuntan a la propia imagen o a la cita.
-    let text = note?.text || r.legacy.full_text || "";
-    for (const e of urlEnts) if (e.url && e.expanded_url) text = text.split(e.url).join(e.expanded_url);
-    for (const m of ents.media || []) if (m.url) text = text.split(m.url).join("");
     const quoted = unwrap(r.quoted_status_result?.result);
     const art = r.article?.article_results?.result;
-    if (art?.rest_id) text = text.replace(/\s*https:\/\/t\.co\/\w+/g, ""); // el enlace al propio artículo
+    const fullText = articleText(art);
+    let text = note?.text || r.legacy.full_text || "";
+    // El enlace al propio artículo es el último t.co del tuit: se quita antes de expandir los demás.
+    if (art?.rest_id) text = text.replace(/\s*https:\/\/t\.co\/\w+\s*$/, "");
+    // Sustituye los t.co por la URL real y quita los que apuntan a la propia imagen, al artículo o a la cita.
+    for (const e of urlEnts) if (e.url && e.expanded_url) text = text.split(e.url).join(e.expanded_url);
+    for (const m of ents.media || []) if (m.url) text = text.split(m.url).join("");
+    text = text.replace(ARTICLE_RE, "");
     if (quoted?.rest_id) text = text.replace(new RegExp(`\\s*https?://(x|twitter)\\.com/\\S+/status/${quoted.rest_id}\\S*`, "g"), "");
+    const links = urlEnts.map((e) => e.expanded_url).filter((l) => l && !/^https?:\/\/(x|twitter)\.com\/i\/article\//.test(l));
     return {
       id: r.rest_id,
       source: src,
@@ -53,15 +72,19 @@
       author_avatar: u.avatar?.image_url || u.legacy?.profile_image_url_https || null,
       created: r.legacy.created_at ? new Date(r.legacy.created_at).toISOString() : null,
       url: handle ? `https://x.com/${handle}/status/${r.rest_id}` : `https://x.com/i/web/status/${r.rest_id}`,
-      links: [...new Set(urlEnts.map((e) => e.expanded_url).filter(Boolean))],
+      links: [...new Set(links)],
       media: (r.legacy.extended_entities?.media || ents.media || []).map((m) => m.media_url_https).filter(Boolean),
       quoted_id: quoted?.rest_id || null,
       x_article: art?.rest_id ? {
         url: `https://x.com/i/article/${art.rest_id}`,
         title: art.title || null,
         excerpt: art.preview_text || null,
+        text: fullText,
         image: art.cover_media?.media_info?.original_img_url || null,
       } : null,
+      // En las listas X sólo manda el principio de los tuits largos y de los artículos: luego se pide el resto.
+      _needsFull: Boolean((art?.rest_id && !fullText) || (r.note_tweet && !note?.text)
+        || (!note?.text && (r.legacy.full_text || "").length >= 250)),
       _quoted: quoted,
     };
   }
@@ -71,6 +94,7 @@
     if (!it) return false;
     const quoted = it._quoted;
     delete it._quoted;
+    if (!it._needsFull) delete it._needsFull;
     const isNew = !items.has(it.id);
     // Un tuit que ya teníamos como citado gana la fuente principal si además está en la lista.
     if (isNew || items.get(it.id).source === "quoted") items.set(it.id, it);
@@ -143,6 +167,7 @@
       "x-twitter-active-user": "yes",
       "content-type": "application/json",
     };
+    api = { headers, features: JSON.parse(url.searchParams.get("features") || "{}") };
     log(`Exportando ${source === "like" ? "me gusta" : "guardados"} desde la API de X…`);
     let cursor = null, emptyPages = 0;
     while (!window.__stopExport) {
@@ -164,6 +189,72 @@
       cursor = page.cursor;
       await sleep(1200);
     }
+  }
+
+  // ---------------------------------------------------------------- texto completo de tuits largos y artículos
+
+  async function findTweetQueryId() {
+    const scripts = performance.getEntriesByType("resource").map((e) => e.name).filter((n) => /abs\.twimg\.com\/.+\.js/.test(n));
+    // main.js primero: es donde suele estar.
+    scripts.sort((x, y) => /\/main\./.test(y) - /\/main\./.test(x));
+    for (const src of scripts) {
+      try {
+        const m = (await (await fetch(src)).text()).match(/queryId:"([\w-]+)",operationName:"TweetResultByRestId"/);
+        if (m) return m[1];
+      } catch { /* probamos el siguiente */ }
+    }
+    return null;
+  }
+
+  async function fetchFullTweet(qid, id) {
+    const features = { ...api.features };
+    for (let attempt = 0; attempt < 4; attempt++) {
+      const q = new URLSearchParams({
+        variables: JSON.stringify({ tweetId: id, withCommunity: false, includePromotedContent: false, withVoice: false }),
+        features: JSON.stringify(features),
+        fieldToggles: JSON.stringify({ withArticleRichContentState: true, withArticlePlainText: true }),
+      });
+      const r = await fetch(`/i/api/graphql/${qid}/TweetResultByRestId?${q}`, { headers: api.headers, credentials: "include" });
+      if (r.status === 429) {
+        const reset = Number(r.headers.get("x-rate-limit-reset")) * 1000;
+        const wait = Math.min(Math.max(reset - Date.now(), 30000), 15 * 60000);
+        log(`X pide esperar; sigo en ${Math.round(wait / 60000)} min…`);
+        await sleep(wait);
+        continue;
+      }
+      const body = await r.json().catch(() => null);
+      // Si a la petición le falta algún «feature» X dice cuáles: se añaden y se repite.
+      const missing = (body?.errors || []).flatMap((e) => (e.message || "").match(/features cannot be null: (.+)/)?.[1].split(/,\s*/) || []);
+      if (!r.ok && missing.length) { missing.forEach((f) => (features[f.trim()] = true)); continue; }
+      return body?.data?.tweetResult?.result || null;
+    }
+    return null;
+  }
+
+  async function completeTexts() {
+    const pending = [...items.values()].filter((it) => it._needsFull);
+    if (!pending.length || !api) return;
+    const qid = await findTweetQueryId();
+    if (!qid) { log("No encuentro cómo pedir los tuits completos; algunos textos largos quedarán recortados."); return; }
+    log(`Pidiendo el texto completo de ${pending.length} tuits largos o con artículo…`);
+    let done = 0, fixed = 0;
+    for (const it of pending) {
+      if (window.__stopExport) break;
+      try {
+        const full = toItem(await fetchFullTweet(qid, it.id), it.source);
+        if (full) {
+          if (full.text && full.text !== it.text) { it.text = full.text; it.links = full.links; fixed++; }
+          if (full.x_article?.text) {
+            const fresh = Object.fromEntries(Object.entries(full.x_article).filter(([, v]) => v));
+            it.x_article = { ...it.x_article, ...fresh };
+            fixed++;
+          }
+        }
+      } catch (e) { log(`No he podido completar ${it.id}: ${e.message}`); }
+      if (++done % 10 === 0) log(`${done}/${pending.length} completados…`);
+      await sleep(700);
+    }
+    log(`Textos completados: ${fixed}.`);
   }
 
   // ---------------------------------------------------------------- plan B: leer la página mientras baja
@@ -209,8 +300,15 @@
     log(`No he podido usar la API de X (${e.message}).`);
     if (!items.size) await exportViaPage();
   }
+  window.__stopExport = false; // parar la lista no impide completar lo recogido
+  try {
+    await completeTexts();
+  } catch (e) {
+    log(`No he podido completar los textos largos (${e.message}).`);
+  }
 
   const list = [...items.values()];
+  list.forEach((it) => delete it._needsFull);
   const quotedCount = list.filter((i) => i.source === "quoted").length;
   const blob = new Blob([JSON.stringify({ source, exported_at: new Date().toISOString(), items: list }, null, 2)], { type: "application/json" });
   const a = Object.assign(document.createElement("a"), {

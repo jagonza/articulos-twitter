@@ -32,12 +32,12 @@ Para no acercarse a los 500 MB, cada artículo guarda como mucho 60.000 caracter
 
 La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`schema.sql`).
 
-1. **Despliega el Worker.** En el panel de Cloudflare: *Workers & Pages → Create → Import a repository*, elige `jagonza/articulos-twitter` y deja el nombre `tweetshelf` y el comando de despliegue por defecto (`npx wrangler deploy`). A partir de ahí cada push a `main` se despliega solo.
+1. **Despliega el Worker.** En el panel de Cloudflare: *Workers & Pages → Create → Import a repository*, elige `jagonza/articulos-twitter` y deja el nombre `articulos-twitter` (debe coincidir con `name` en `wrangler.toml`) y el comando de despliegue por defecto (`npx wrangler deploy`). A partir de ahí cada push a `main` se despliega solo.
 2. **Pon la contraseña.** En el Worker: *Settings → Variables and secrets → Add*, de tipo *Secret*:
    - `APP_PASSWORD`: la contraseña para entrar.
    - `API_TOKEN`: una cadena larga aleatoria (la usa el extractor).
 3. **Conecta el extractor.** En GitHub: *Settings → Secrets and variables → Actions → New repository secret*:
-   - `TWEETSHELF_URL`: la dirección del Worker, p. ej. `https://tweetshelf.tu-subdominio.workers.dev`.
+   - `TWEETSHELF_URL`: la dirección del Worker, p. ej. `https://articulos-twitter.tu-subdominio.workers.dev`.
    - `TWEETSHELF_TOKEN`: el mismo valor que `API_TOKEN`.
 4. *(Opcional)* **Botón «extraer ahora».** Crea un [token de GitHub de grano fino](https://github.com/settings/personal-access-tokens/new) sólo para este repo con permiso *Actions: Read and write* y añádelo al Worker como secretos `GITHUB_TOKEN` (el token) y `GITHUB_REPO` (`jagonza/articulos-twitter`). Sin él, los artículos se extraen en la siguiente pasada de 3 horas.
 

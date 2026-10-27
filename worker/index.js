@@ -128,12 +128,17 @@ async function listItems(db, p) {
 
 // ------------------------------------------------------------------ importación
 
-// Los «Artículos» de X vienen ya en la exportación (título, entradilla, portada): se guardan como artículo.
-const XA = { article_url: "xa_url", article_title: "xa_title", article_excerpt: "xa_excerpt", article_text: "xa_excerpt", article_image: "xa_image" };
-const xaSet = (col, from) => `${col} = CASE WHEN excluded.article_site = 'X' AND items.article_status != 'ok' THEN ${from} ELSE items.${col} END`;
+// Los «Artículos» de X vienen ya en la exportación (título, texto, portada): se guardan como artículo.
+// Si ya estaba guardado de X y llega un texto más largo (antes sólo se exportaba la entradilla), se sustituye.
+const MAX_TEXT = 60000; // igual que el extractor, para no acercarse a los 500 MB de D1
+const XA = { article_url: "xa_url", article_title: "xa_title", article_excerpt: "xa_excerpt", article_text: "xa_text",
+  article_image: "xa_image", article_words: "xa_words" };
+const XA_WINS = `excluded.article_site = 'X' AND (items.article_status != 'ok'
+  OR (items.article_site = 'X' AND length(coalesce(excluded.article_text, '')) > length(coalesce(items.article_text, ''))))`;
+const xaSet = (col, from) => `${col} = CASE WHEN ${XA_WINS} THEN coalesce(${from}, items.${col}) ELSE items.${col} END`;
 
 const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, author_name, author_avatar, tweet_created, tweet_url, urls, media,
-    quoted_id, article_status, article_url, article_title, article_excerpt, article_text, article_image, article_site, domain)
+    quoted_id, article_status, article_url, article_title, article_excerpt, article_text, article_image, article_words, article_site, domain)
   SELECT json_extract(value, '$.id'), json_extract(value, '$.source'), coalesce(json_extract(value, '$.tweet_text'), ''),
          json_extract(value, '$.author_handle'), json_extract(value, '$.author_name'), json_extract(value, '$.author_avatar'),
          json_extract(value, '$.tweet_created'), json_extract(value, '$.tweet_url'),
@@ -148,7 +153,11 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
   ON CONFLICT(id) DO UPDATE SET
     sources = CASE WHEN instr(',' || items.sources || ',', ',' || excluded.sources || ',') > 0 THEN items.sources
                    ELSE items.sources || ',' || excluded.sources END,
-    tweet_text = CASE WHEN items.tweet_text = '' THEN excluded.tweet_text ELSE items.tweet_text END,
+    -- el texto más largo gana: así una reimportación arregla los tuits largos que llegaron recortados
+    -- (y el de los Artículos de X, que antes se guardaba como el enlace al artículo)
+    tweet_text = CASE WHEN length(excluded.tweet_text) > length(items.tweet_text)
+                        OR (excluded.article_site = 'X' AND items.tweet_text LIKE '%x.com/i/article/%') THEN excluded.tweet_text
+                      ELSE items.tweet_text END,
     author_handle = coalesce(items.author_handle, excluded.author_handle),
     author_name = coalesce(items.author_name, excluded.author_name),
     author_avatar = coalesce(items.author_avatar, excluded.author_avatar),
@@ -157,8 +166,8 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
     media = CASE WHEN items.media = '[]' THEN excluded.media ELSE items.media END,
     quoted_id = coalesce(items.quoted_id, excluded.quoted_id),
     ${Object.keys(XA).map((c) => xaSet(c, `excluded.${c}`)).join(",\n    ")},
-    domain = CASE WHEN excluded.article_site = 'X' AND items.article_status != 'ok' THEN 'x.com' ELSE items.domain END,
-    article_site = CASE WHEN excluded.article_site = 'X' AND items.article_status != 'ok' THEN 'X' ELSE items.article_site END,
+    domain = CASE WHEN ${XA_WINS} THEN 'x.com' ELSE items.domain END,
+    article_site = CASE WHEN ${XA_WINS} THEN 'X' ELSE items.article_site END,
     article_status = CASE WHEN excluded.article_site = 'X' THEN 'ok'
                           WHEN items.urls = '[]' AND excluded.urls != '[]' THEN 'pending' ELSE items.article_status END,
     urls = CASE WHEN items.urls = '[]' THEN excluded.urls ELSE items.urls END`;
@@ -170,11 +179,15 @@ async function importItems(db, items) {
     .filter((it) => it && /^\d+$/.test(String(it.id)))
     .map((it) => {
       const xa = it.x_article && typeof it.x_article === "object" ? it.x_article : {};
+      const xaText = String(xa.text || xa.excerpt || "").slice(0, MAX_TEXT) || null;
       return {
         ...it, id: String(it.id), source: SOURCES.has(it.source) ? it.source : "bookmark",
         quoted_id: /^\d+$/.test(String(it.quoted_id || "")) ? String(it.quoted_id) : null,
+        // el enlace al propio Artículo de X no aporta nada como texto del tuit (exportaciones antiguas lo traían)
+        tweet_text: xa.url ? String(it.tweet_text || "").replace(/\s*(https?:\/\/)?(x|twitter)\.com\/i\/article\/\d+\S*/g, "").trim() : it.tweet_text,
         urls: JSON.stringify(it.urls || []), media: JSON.stringify(it.media || []),
         xa_url: xa.url || null, xa_title: xa.title || null, xa_excerpt: xa.excerpt || null, xa_image: xa.image || null,
+        xa_text: xaText, xa_words: xaText ? xaText.split(/\s+/).filter(Boolean).length : null,
       };
     });
   if (!clean.length) return { found: items.length, added: 0, updated: 0 };

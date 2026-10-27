@@ -43,13 +43,34 @@ def auto_tags(url, words):
     return tags
 
 
+SHORTENER_HOSTS = ("t.co",)
+# t.co contesta a los navegadores con una página que redirige por HTML/JS en vez de con un 301.
+REFRESH_RE = re.compile(r'http-equiv=["\']?refresh["\']?[^>]*url=([^"\'>]+)', re.I)
+REPLACE_RE = re.compile(r'location\.replace\(["\']([^"\']+)["\']\)', re.I)
+
+
+def _html_redirect(html):
+    m = REFRESH_RE.search(html) or REPLACE_RE.search(html)
+    return m.group(1).replace("\\/", "/").strip() if m else None
+
+
 def resolve(client, url):
     """Sigue redirecciones (t.co, bit.ly...) y devuelve la URL final."""
     try:
-        r = client.head(url, follow_redirects=True)
-        if r.status_code >= 400 or r.status_code == 405:
-            r = client.get(url, follow_redirects=True)
-        return str(r.url)
+        for _ in range(5):
+            # Sin aspecto de navegador, t.co devuelve un 301 normal.
+            headers = {"User-Agent": "curl/8.5"} if domain_of(url) in SHORTENER_HOSTS else None
+            r = client.head(url, follow_redirects=True, headers=headers)
+            if r.status_code >= 400 or domain_of(str(r.url)) in SHORTENER_HOSTS:
+                r = client.get(url, follow_redirects=True, headers=headers)
+            url = str(r.url)
+            if domain_of(url) not in SHORTENER_HOSTS:
+                return url
+            nxt = _html_redirect(r.text)
+            if not nxt or nxt == url:
+                return url
+            url = nxt
+        return url
     except httpx.HTTPError:
         return url
 
@@ -57,13 +78,18 @@ def resolve(client, url):
 def extract(urls, timeout=20):
     """Devuelve un dict con los campos article_* o el motivo del fallo."""
     with httpx.Client(headers={"User-Agent": UA, "Accept-Language": "es,en;q=0.8"}, timeout=timeout) as client:
-        final = None
+        final, unresolved = None, False
         for u in urls:
             target = resolve(client, u)
+            if domain_of(target) in SHORTENER_HOSTS:
+                unresolved = True  # mejor fallar que guardar «t.co» como si fuera el artículo
+                continue
             if not is_twitter_url(target) and not target.lower().endswith(SKIP_EXT):
                 final = target
                 break
         if not final:
+            if unresolved:
+                return {"article_status": "failed", "article_error": "No se pudo seguir el enlace acortado"}
             return {"article_status": "none"}
 
         result = {"article_url": final, "domain": domain_of(final)}

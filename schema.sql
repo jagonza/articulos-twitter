@@ -31,6 +31,8 @@ CREATE TABLE IF NOT EXISTS items (
     tags            TEXT NOT NULL DEFAULT '[]',  -- etiquetas (json)
     quoted_id       TEXT,                      -- id del tuit que cita (también guardado como elemento)
     x_status        TEXT,                      -- NULL | 'remove' (quitar de X) | 'removed' (ya quitado)
+    thread          TEXT,                      -- JSON: hilo del autor en orden [{id, text, media, links}]
+    thread_text     TEXT,                      -- texto del hilo, para la búsqueda
     imported_at     TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -42,20 +44,20 @@ CREATE INDEX IF NOT EXISTS idx_items_quoted ON items(quoted_id);
 
 -- Índice de búsqueda: lee el contenido de items (no lo duplica) y se mantiene con triggers.
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(
-    tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags,
+    tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags, thread_text,
     content = 'items', content_rowid = 'pk',
     tokenize = 'unicode61 remove_diacritics 2'
 );
 
 CREATE TRIGGER IF NOT EXISTS items_ai AFTER INSERT ON items BEGIN
-    INSERT INTO items_fts (rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags) VALUES (new.pk, new.tweet_text, new.author_name, new.author_handle, new.article_author, new.article_site, new.article_title, new.article_text, new.note, new.tags);
+    INSERT INTO items_fts (rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags, thread_text) VALUES (new.pk, new.tweet_text, new.author_name, new.author_handle, new.article_author, new.article_site, new.article_title, new.article_text, new.note, new.tags, new.thread_text);
 END;
 
 CREATE TRIGGER IF NOT EXISTS items_ad AFTER DELETE ON items BEGIN
-    INSERT INTO items_fts (items_fts, rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags) VALUES ('delete', old.pk, old.tweet_text, old.author_name, old.author_handle, old.article_author, old.article_site, old.article_title, old.article_text, old.note, old.tags);
+    INSERT INTO items_fts (items_fts, rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags, thread_text) VALUES ('delete', old.pk, old.tweet_text, old.author_name, old.author_handle, old.article_author, old.article_site, old.article_title, old.article_text, old.note, old.tags, old.thread_text);
 END;
 
-CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE OF tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags ON items BEGIN
-    INSERT INTO items_fts (items_fts, rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags) VALUES ('delete', old.pk, old.tweet_text, old.author_name, old.author_handle, old.article_author, old.article_site, old.article_title, old.article_text, old.note, old.tags);
-    INSERT INTO items_fts (rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags) VALUES (new.pk, new.tweet_text, new.author_name, new.author_handle, new.article_author, new.article_site, new.article_title, new.article_text, new.note, new.tags);
+CREATE TRIGGER IF NOT EXISTS items_au AFTER UPDATE OF tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags, thread_text ON items BEGIN
+    INSERT INTO items_fts (items_fts, rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags, thread_text) VALUES ('delete', old.pk, old.tweet_text, old.author_name, old.author_handle, old.article_author, old.article_site, old.article_title, old.article_text, old.note, old.tags, old.thread_text);
+    INSERT INTO items_fts (rowid, tweet_text, author_name, author_handle, article_author, article_site, article_title, article_text, note, tags, thread_text) VALUES (new.pk, new.tweet_text, new.author_name, new.author_handle, new.article_author, new.article_site, new.article_title, new.article_text, new.note, new.tags, new.thread_text);
 END;

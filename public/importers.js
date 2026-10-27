@@ -27,6 +27,7 @@ function item(id, text, source, kw = {}) {
     urls, media: (kw.media || []).filter((m) => typeof m === "string" && m),
     quoted_id: kw.quoted_id ? String(kw.quoted_id) : null,
     x_article: kw.x_article || null,
+    thread: Array.isArray(kw.thread) ? kw.thread : null,
   };
 }
 
@@ -100,6 +101,7 @@ function normalizeGeneric(d, source) {
     urls, media,
     quoted_id: pick(d, "quoted_id", "quoted_status_id_str", "quoted_tweet_id"),
     x_article: d.x_article && typeof d.x_article === "object" ? d.x_article : null,
+    thread: d.thread,
   });
 }
 

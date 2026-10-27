@@ -1,0 +1,16 @@
+name = "tweetshelf"
+main = "worker/index.js"
+compatibility_date = "2026-10-01"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = true
+
+[[d1_databases]]
+binding = "DB"
+database_name = "tweetshelf"
+database_id = "3fa2439b-9477-4f79-ad27-bacb2a9efa91"
+
+[observability]
+enabled = true

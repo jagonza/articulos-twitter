@@ -1,0 +1,109 @@
+"""Resuelve los enlaces de cada tuit y extrae el artículo (título, autor, texto, imagen)."""
+import re
+from urllib.parse import urlparse
+
+import httpx
+import trafilatura
+
+TWITTER_HOSTS = ("twitter.com", "x.com", "mobile.twitter.com", "pic.twitter.com", "pic.x.com")
+MAX_TEXT = 60_000  # caracteres; mantiene la base de datos gratuita holgada
+
+
+def is_twitter_url(url):
+    return domain_of(url) in TWITTER_HOSTS
+
+
+UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_5) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36"
+CHALLENGE_RE = re.compile(r"just a moment|client challenge|attention required|access denied|are you a robot|verify you are human", re.I)
+SKIP_EXT = (".jpg", ".jpeg", ".png", ".gif", ".webp", ".mp4", ".zip")
+
+# Etiquetas automáticas según el dominio del enlace.
+DOMAIN_TAGS = {
+    "youtube.com": "vídeo", "youtu.be": "vídeo", "vimeo.com": "vídeo",
+    "github.com": "código", "gitlab.com": "código", "huggingface.co": "código",
+    "arxiv.org": "paper", "biorxiv.org": "paper", "doi.org": "paper", "nature.com": "paper",
+    "substack.com": "newsletter", "medium.com": "blog", "dev.to": "blog",
+    "open.spotify.com": "podcast", "podcasts.apple.com": "podcast",
+    "news.ycombinator.com": "hacker news", "reddit.com": "reddit",
+}
+
+
+def domain_of(url):
+    host = urlparse(url).netloc.lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def auto_tags(url, words):
+    dom = domain_of(url)
+    tags = {tag for d, tag in DOMAIN_TAGS.items() if dom == d or dom.endswith("." + d)}
+    if url.lower().endswith(".pdf"):
+        tags.add("pdf")
+    if words and words > 2500:
+        tags.add("lectura larga")
+    return tags
+
+
+def resolve(client, url):
+    """Sigue redirecciones (t.co, bit.ly...) y devuelve la URL final."""
+    try:
+        r = client.head(url, follow_redirects=True)
+        if r.status_code >= 400 or r.status_code == 405:
+            r = client.get(url, follow_redirects=True)
+        return str(r.url)
+    except httpx.HTTPError:
+        return url
+
+
+def extract(urls, timeout=20):
+    """Devuelve un dict con los campos article_* o el motivo del fallo."""
+    with httpx.Client(headers={"User-Agent": UA, "Accept-Language": "es,en;q=0.8"}, timeout=timeout) as client:
+        final = None
+        for u in urls:
+            target = resolve(client, u)
+            if not is_twitter_url(target) and not target.lower().endswith(SKIP_EXT):
+                final = target
+                break
+        if not final:
+            return {"article_status": "none"}
+
+        result = {"article_url": final, "domain": domain_of(final)}
+        try:
+            r = client.get(final, follow_redirects=True)
+            r.raise_for_status()
+        except httpx.HTTPError as e:
+            return {**result, "article_status": "failed", "article_error": str(e)[:300]}
+
+        ctype = r.headers.get("content-type", "")
+        if "html" not in ctype:
+            return {**result, "article_status": "ok", "article_title": final.rsplit("/", 1)[-1] or final,
+                    "article_site": result["domain"], "tags": sorted(auto_tags(final, 0))}
+
+        html = r.text
+        doc = trafilatura.bare_extraction(html, url=final, with_metadata=True, include_comments=False,
+                                          favor_recall=True, as_dict=True) or {}
+        text = (doc.get("text") or "").strip()
+        words = len(text.split())
+        title = doc.get("title") or _meta(html, "og:title") or result["domain"]
+        if words < 120 and CHALLENGE_RE.search(title):
+            return {**result, "article_status": "failed", "article_error": "La web pide verificación anti-bots"}
+        excerpt = doc.get("description") or _meta(html, "og:description") or text[:280]
+        return {
+            **result,
+            "article_status": "ok",
+            "article_title": title,
+            "article_author": doc.get("author"),
+            "article_site": doc.get("sitename") or _meta(html, "og:site_name") or result["domain"],
+            "article_date": doc.get("date"),
+            "article_image": doc.get("image") or _meta(html, "og:image"),
+            "article_excerpt": (excerpt or "")[:500],
+            "article_text": text[:MAX_TEXT],
+            "article_words": words,
+            "article_error": None,
+            "tags": sorted(auto_tags(final, words)),
+        }
+
+
+def _meta(html, prop):
+    m = re.search(rf'<meta[^>]+(?:property|name)=["\']{re.escape(prop)}["\'][^>]+content=["\']([^"\']+)', html, re.I) \
+        or re.search(rf'<meta[^>]+content=["\']([^"\']+)["\'][^>]+(?:property|name)=["\']{re.escape(prop)}["\']', html, re.I)
+    return m.group(1) if m else None

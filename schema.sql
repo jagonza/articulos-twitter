@@ -29,6 +29,8 @@ CREATE TABLE IF NOT EXISTS items (
     archived        INTEGER NOT NULL DEFAULT 0,
     note            TEXT NOT NULL DEFAULT '',
     tags            TEXT NOT NULL DEFAULT '[]',  -- etiquetas (json)
+    quoted_id       TEXT,                      -- id del tuit que cita (también guardado como elemento)
+    x_status        TEXT,                      -- NULL | 'remove' (quitar de X) | 'removed' (ya quitado)
     imported_at     TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at      TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -36,6 +38,7 @@ CREATE TABLE IF NOT EXISTS items (
 CREATE INDEX IF NOT EXISTS idx_items_status ON items(article_status);
 CREATE INDEX IF NOT EXISTS idx_items_domain ON items(domain);
 CREATE INDEX IF NOT EXISTS idx_items_author ON items(author_handle);
+CREATE INDEX IF NOT EXISTS idx_items_quoted ON items(quoted_id);
 
 -- Índice de búsqueda: lee el contenido de items (no lo duplica) y se mantiene con triggers.
 CREATE VIRTUAL TABLE IF NOT EXISTS items_fts USING fts5(

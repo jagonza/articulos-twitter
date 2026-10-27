@@ -38,6 +38,10 @@
       <a href="/api/export.json" download>JSON completo</a> ·
       <a href="/api/export.md?view=favorites" target="_blank">Favoritos en Markdown</a>
     </section>
+    <section class="facet">
+      <h3>Limpiar X</h3>
+      <button class="btn ghost small" onclick="openClean()">🧹 Quitar de X lo ya guardado</button>
+    </section>
     <section class="facet small muted">
       <a href="#" id="retryBtn" class="hidden"></a>
       <a href="/logout">Cerrar sesión</a>
@@ -102,16 +106,32 @@
       <ol class="small">
         <li><b>“Me gusta” (likes):</b> en X ve a <i>Configuración → Tu cuenta → Descargar un archivo de tus datos</i>.
           Cuando llegue (puede tardar 24 h), sube el .zip o sólo <code>data/like.js</code>.</li>
-        <li><b>Elementos guardados (bookmarks):</b> el archivo de X no los incluye.
+        <li><b>Guardados o me gusta, con todos los datos</b> (recomendado: trae autor, enlaces reales, tuits citados y Artículos de X):
           <ol>
             <li><button type="button" class="btn ghost" id="copyScriptBtn">📋 Copiar script</button></li>
-            <li>Abre tus guardados en X (<code>x.com/i/bookmarks</code>) y la consola del navegador (<kbd>Cmd</kbd>+<kbd>Opt</kbd>+<kbd>J</kbd>).</li>
+            <li>Abre en X tus guardados (<code>x.com/i/bookmarks</code>) o tus me gusta (<i>Historia → Me gusta</i>) y la consola del navegador (<kbd>Cmd</kbd>+<kbd>Opt</kbd>+<kbd>J</kbd>).</li>
             <li>Pega el script y pulsa Enter. La primera vez Chrome te pide escribir <code>allow pasting</code>.</li>
-            <li>Irá bajando sola; al acabar descarga un JSON. Súbelo aquí.</li>
+            <li>Al acabar descarga un JSON. Súbelo aquí.</li>
           </ol></li>
         <li>También vale el JSON/CSV de extensiones como <i>twitter-web-exporter</i>.</li>
       </ol>
     </details>
+  </dialog>
+
+  <!-- Limpiar X -->
+  <dialog id="cleanDlg">
+    <form method="dialog" class="dlg-head">
+      <h2>Quitar de X lo ya guardado</h2>
+      <button class="icon-btn" aria-label="Cerrar">✕</button>
+    </form>
+    <p class="small muted">Marca con 🧹 (o la tecla <kbd>x</kbd>) lo que quieras quitar, o elige quitar todo lo importado.
+      Aquí se queda todo; sólo desaparece de tus guardados / me gusta de X. Desde la app no se puede deshacer.</p>
+    <div id="cleanCounts" class="radios"></div>
+    <ol class="small">
+      <li><button type="button" class="btn ghost" id="cleanCopy">📋 Copiar script de limpieza</button></li>
+      <li>Abre x.com, la consola del navegador (<kbd>Cmd</kbd>+<kbd>Opt</kbd>+<kbd>J</kbd>), pega y pulsa Enter. Te pedirá confirmación y los irá quitando poco a poco.</li>
+      <li>Cuando acabe, vuelve aquí: <button type="button" class="btn ghost hidden" id="cleanDone">✓ Ya lo he ejecutado</button></li>
+    </ol>
   </dialog>
 
   <div class="toast hidden" id="toast"></div>

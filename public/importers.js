@@ -2,7 +2,7 @@
 //
 // Formatos:
 //   * Archivo de datos de X: el .zip completo (sólo se leen like.js / bookmark.js, aunque pese gigas) o el .js suelto
-//   * JSON de public/export_bookmarks.js
+//   * JSON de public/export_x.js (guardados o me gusta, con tuits citados y Artículos de X)
 //   * JSON/CSV de exportadores populares (twitter-web-exporter, respuestas GraphQL…)
 
 // zip.js 2.22.1 (BSD-3) servido desde /vendor para no depender de un CDN.
@@ -25,6 +25,8 @@ function item(id, text, source, kw = {}) {
     tweet_created: kw.tweet_created || null,
     tweet_url: kw.tweet_url || (handle ? `https://x.com/${handle}/status/${id}` : `https://x.com/i/web/status/${id}`),
     urls, media: (kw.media || []).filter((m) => typeof m === "string" && m),
+    quoted_id: kw.quoted_id ? String(kw.quoted_id) : null,
+    x_article: kw.x_article || null,
   };
 }
 
@@ -88,13 +90,16 @@ function normalizeGeneric(d, source) {
   if (typeof media === "string") media = media.split(/[\s,]+/).filter(Boolean);
   media = media.map((m) => (typeof m === "object" ? m.media_url_https || m.original || m.url : m));
   const url = pick(d, "url", "tweet_url", "link");
-  return item(id, text, source, {
+  const ownSource = ["like", "bookmark", "quoted"].includes(d.source) ? d.source : source;
+  return item(id, text, ownSource, {
     author_handle: pick(d, "author_handle", "screen_name", "username", "user.screen_name", "author.screen_name", "user_handle"),
     author_name: pick(d, "author_name", "name", "user.name", "author.name", "user_name"),
     author_avatar: pick(d, "author_avatar", "profile_image_url", "user.profile_image_url_https", "author.profile_image_url"),
     tweet_created: pick(d, "created_at", "created", "date", "tweet_created"),
     tweet_url: String(url || "").includes("/status/") ? url : null,
     urls, media,
+    quoted_id: pick(d, "quoted_id", "quoted_status_id_str", "quoted_tweet_id"),
+    x_article: d.x_article && typeof d.x_article === "object" ? d.x_article : null,
   });
 }
 

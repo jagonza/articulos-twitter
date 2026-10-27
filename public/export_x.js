@@ -193,28 +193,67 @@
 
   // ---------------------------------------------------------------- texto completo de tuits largos y artículos
 
-  async function findTweetQueryId() {
-    const scripts = performance.getEntriesByType("resource").map((e) => e.name).filter((n) => /abs\.twimg\.com\/.+\.js/.test(n));
-    // main.js primero: es donde suele estar.
-    scripts.sort((x, y) => /\/main\./.test(y) - /\/main\./.test(x));
-    for (const src of scripts) {
-      try {
-        const m = (await (await fetch(src)).text()).match(/queryId:"([\w-]+)",operationName:"TweetResultByRestId"/);
-        if (m) return m[1];
-      } catch { /* probamos el siguiente */ }
+  // Las peticiones internas de X se identifican por un queryId que cambia con cada versión de x.com.
+  // Se busca en el código ya cargado (módulos de webpack) y, si no, en los .js de la página.
+  const OPS = ["TweetResultByRestId", "TweetDetail"];
+  const opRe = (op) => new RegExp(`queryId:\\s*"([\\w-]+)"[^{}]{0,300}?operationName:\\s*"${op}"|operationName:\\s*"${op}"[^{}]{0,300}?queryId:\\s*"([\\w-]+)"`);
+
+  function searchCode(code, found) {
+    for (const op of OPS) {
+      if (found[op] || !code.includes(op)) continue;
+      const m = code.match(opRe(op));
+      if (m) found[op] = m[1] || m[2];
     }
-    return null;
   }
 
-  async function fetchFullTweet(qid, id) {
+  async function findTweetQuery() {
+    const found = {};
+    for (const key of Object.keys(window).filter((k) => k.startsWith("webpackChunk"))) {
+      for (const chunk of window[key] || []) {
+        for (const fn of Object.values(chunk?.[1] || {})) {
+          try { searchCode(String(fn), found); } catch { /* módulo ilegible */ }
+        }
+      }
+    }
+    if (!found[OPS[0]]) {
+      const urls = new Set([
+        ...[...document.querySelectorAll("script[src], link[href$='.js']")].map((e) => e.src || e.href),
+        ...performance.getEntriesByType("resource").map((e) => e.name),
+      ].filter((n) => /abs\.twimg\.com\/.+\.js/.test(n)));
+      for (const src of [...urls].sort((x, y) => /\/main\./.test(y) - /\/main\./.test(x))) {
+        try { searchCode(await (await fetch(src)).text(), found); } catch { /* probamos el siguiente */ }
+        if (found[OPS[0]]) break;
+      }
+    }
+    const op = OPS.find((o) => found[o]);
+    return op ? { op, qid: found[op] } : null;
+  }
+
+  // Busca en una respuesta el tuit con ese id (TweetDetail devuelve la conversación entera).
+  function findTweet(json, id) {
+    let hit = null;
+    (function walk(o) {
+      if (hit || !o || typeof o !== "object") return;
+      const t = unwrap(o);
+      if (t?.rest_id === id && t.legacy) { hit = t; return; }
+      for (const k in o) walk(o[k]);
+    })(json);
+    return hit;
+  }
+
+  async function fetchFullTweet({ op, qid }, id) {
     const features = { ...api.features };
+    const variables = op === "TweetDetail"
+      ? { focalTweetId: id, with_rux_injections: false, rankingMode: "Relevance", includePromotedContent: false,
+          withCommunity: true, withQuickPromoteEligibilityTweetFields: false, withBirdwatchNotes: false, withVoice: true }
+      : { tweetId: id, withCommunity: false, includePromotedContent: false, withVoice: false };
     for (let attempt = 0; attempt < 4; attempt++) {
       const q = new URLSearchParams({
-        variables: JSON.stringify({ tweetId: id, withCommunity: false, includePromotedContent: false, withVoice: false }),
+        variables: JSON.stringify(variables),
         features: JSON.stringify(features),
         fieldToggles: JSON.stringify({ withArticleRichContentState: true, withArticlePlainText: true }),
       });
-      const r = await fetch(`/i/api/graphql/${qid}/TweetResultByRestId?${q}`, { headers: api.headers, credentials: "include" });
+      const r = await fetch(`/i/api/graphql/${qid}/${op}?${q}`, { headers: api.headers, credentials: "include" });
       if (r.status === 429) {
         const reset = Number(r.headers.get("x-rate-limit-reset")) * 1000;
         const wait = Math.min(Math.max(reset - Date.now(), 30000), 15 * 60000);
@@ -226,7 +265,8 @@
       // Si a la petición le falta algún «feature» X dice cuáles: se añaden y se repite.
       const missing = (body?.errors || []).flatMap((e) => (e.message || "").match(/features cannot be null: (.+)/)?.[1].split(/,\s*/) || []);
       if (!r.ok && missing.length) { missing.forEach((f) => (features[f.trim()] = true)); continue; }
-      return body?.data?.tweetResult?.result || null;
+      if (!r.ok) throw new Error(`X respondió ${r.status}`);
+      return findTweet(body?.data, id);
     }
     return null;
   }
@@ -234,14 +274,18 @@
   async function completeTexts() {
     const pending = [...items.values()].filter((it) => it._needsFull);
     if (!pending.length || !api) return;
-    const qid = await findTweetQueryId();
-    if (!qid) { log("No encuentro cómo pedir los tuits completos; algunos textos largos quedarán recortados."); return; }
+    const query = await findTweetQuery();
+    if (!query) {
+      log("No encuentro cómo pedir los tuits completos; algunos textos largos quedarán recortados.",
+        "Prueba a abrir un tuit cualquiera, volver a esta lista y lanzar el script otra vez.");
+      return;
+    }
     log(`Pidiendo el texto completo de ${pending.length} tuits largos o con artículo…`);
     let done = 0, fixed = 0;
     for (const it of pending) {
       if (window.__stopExport) break;
       try {
-        const full = toItem(await fetchFullTweet(qid, it.id), it.source);
+        const full = toItem(await fetchFullTweet(query, it.id), it.source);
         if (full) {
           if (full.text && full.text !== it.text) { it.text = full.text; it.links = full.links; fixed++; }
           if (full.x_article?.text) {

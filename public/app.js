@@ -304,6 +304,15 @@ document.addEventListener("click", async (e) => {
 });
 
 $("#scrim").onclick = closeDrawer;
+$("#copyScriptBtn").onclick = async (e) => {
+  const code = await fetch("/export_bookmarks.js").then((r) => r.text());
+  try {
+    await navigator.clipboard.writeText(code);
+    e.target.textContent = "✅ Copiado, pégalo en la consola de X";
+  } catch {
+    window.open("/export_bookmarks.js", "_blank"); // sin permiso de portapapeles: que lo copie a mano
+  }
+};
 $("#retryBtn").onclick = async (e) => {
   e.preventDefault();
   const r = await api("/api/retry-failed", { method: "POST" });

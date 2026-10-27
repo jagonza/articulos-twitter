@@ -4,7 +4,7 @@ Tu estantería de favoritos de X/Twitter: importa tus *me gusta* y tus elementos
 
 ## Qué hace
 
-- **Importa** desde el archivo de datos de X (el `.zip` entero o `data/like.js`), desde el script de guardados incluido (`tools/export_bookmarks.js`) o desde el JSON/CSV de exportadores como *twitter-web-exporter*. Los ficheros se leen en tu navegador, así que el `.zip` puede pesar gigas: sólo se suben los tuits. Si un tuit aparece en varias fuentes se fusiona.
+- **Importa** desde el archivo de datos de X (el `.zip` entero o `data/like.js`), desde el script de guardados incluido (`public/export_bookmarks.js`, con botón «Copiar script» en la app) o desde el JSON/CSV de exportadores como *twitter-web-exporter*. Los ficheros se leen en tu navegador, así que el `.zip` puede pesar gigas: sólo se suben los tuits. Si un tuit aparece en varias fuentes se fusiona.
 - **Extrae el artículo** de cada enlace (resuelve `t.co` y saca título, autor, sitio, fecha, imagen y texto limpio con [trafilatura](https://github.com/adbar/trafilatura)). Lo hace GitHub Actions cada 3 horas, o al momento con «extraer ahora».
 - **Búsqueda de texto completo** (FTS5, sin distinguir acentos) en tuits, autores, artículos, notas y etiquetas, con fragmentos resaltados.
 - **Organiza**: favoritos ⭐, leído ✅, archivo, notas con autoguardado y etiquetas (manuales y automáticas según el sitio: vídeo, código, paper, newsletter, lectura larga…).
@@ -46,7 +46,7 @@ La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`sch
 | Qué | Cómo |
 | --- | --- |
 | **Me gusta** | X → Configuración → Tu cuenta → *Descargar un archivo de tus datos*. Llega en ~24 h. Sube el `.zip` tal cual. `like.js` no trae autor ni fecha; si luego importas los mismos tuits desde otra fuente, se completan. |
-| **Guardados** | El archivo de X no los incluye. Abre `https://x.com/i/bookmarks`, pega `tools/export_bookmarks.js` en la consola del navegador y sube el JSON que descarga. |
+| **Guardados** | El archivo de X no los incluye. En la app, *Importar → 📋 Copiar script*. Abre `https://x.com/i/bookmarks`, pega el script en la consola del navegador (la primera vez Chrome pide escribir `allow pasting`) y sube el JSON que descarga. |
 
 ## Desarrollo en local
 
@@ -69,7 +69,6 @@ schema.sql             tablas, índice de búsqueda y triggers de D1
 public/                interfaz (HTML/CSS/JS sin dependencias; zip.js en public/vendor)
 extractor/             extracción de artículos en Python (la ejecuta GitHub Actions)
 .github/workflows/     extract.yml, cada 3 horas o bajo demanda
-tools/                 script para exportar los guardados de X
 sample/                datos de ejemplo
 ```
 

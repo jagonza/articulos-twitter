@@ -2,7 +2,7 @@
 //
 // Formatos:
 //   * Archivo de datos de X: el .zip completo (sólo se leen like.js / bookmark.js, aunque pese gigas) o el .js suelto
-//   * JSON de tools/export_bookmarks.js
+//   * JSON de public/export_bookmarks.js
 //   * JSON/CSV de exportadores populares (twitter-web-exporter, respuestas GraphQL…)
 
 // zip.js 2.22.1 (BSD-3) servido desde /vendor para no depender de un CDN.

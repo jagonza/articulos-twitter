@@ -233,29 +233,86 @@ async function uploadFiles(files) {
     show();
   }
   await refresh();
-  extractNow(true);
+  trackExtraction(await api("/api/extract-now", { method: "POST" }).catch(() => ({})));
 }
 
-// La extracción de artículos la hace GitHub Actions cada pocas horas; aquí sólo mostramos lo pendiente.
-async function extractNow(quiet = false) {
-  const r = await api("/api/extract-now", { method: "POST" }).catch(() => ({}));
-  if (!quiet) toast(r.triggered ? "Extracción lanzada, tardará unos minutos" : "Se extraerán en la próxima pasada automática");
-  pollProgress();
+// La extracción de artículos la hace GitHub Actions cada 3 horas; «extraer ahora» lanza una pasada
+// al momento y aquí seguimos su ejecución para que se vea en qué va.
+const extraction = { since: 0, notice: "" };
+const plural = (n, s) => `${n} ${s}${n === 1 ? "" : "s"}`;
+
+async function extractNow() {
+  extraction.notice = "⏳ Lanzando la extracción…";
+  extraction.since = 0;
+  pollProgress(false);
+  const r = await api("/api/extract-now", { method: "POST" })
+    .catch((e) => ({ triggered: false, reason: "github_error", message: e.message }));
+  trackExtraction(r);
 }
 window.extractNow = extractNow;
 
+// Recibe la respuesta de cualquier llamada que dispara el extractor y deja el aviso adecuado.
+function trackExtraction(r) {
+  if (r.triggered) {
+    extraction.since = Date.now();
+    extraction.notice = "";
+  } else if (r.reason === "not_configured") {
+    extraction.notice = `⚠️ «Extraer ahora» no está configurado: falta el secreto <code>GITHUB_TOKEN</code> (y <code>GITHUB_REPO</code>) en el Worker.
+      Los artículos se extraerán solos en la próxima pasada automática (cada 3 h).`;
+  } else if (r.reason === "github_error") {
+    extraction.notice = `❌ No se pudo lanzar la extracción: ${esc(r.message)}.`;
+  }
+  pollProgress();
+}
+
 let pollTimer;
-async function pollProgress() {
+async function pollProgress(refreshStatus = true) {
   clearTimeout(pollTimer);
   const p = await api("/api/progress");
-  $("#progress").classList.toggle("hidden", !p.pending);
-  if (!p.pending) return;
-  $("#progressText").innerHTML = `⏳ ${p.pending} artículo${p.pending === 1 ? "" : "s"} pendiente${p.pending === 1 ? "" : "s"} de extraer
-    · <a href="#" onclick="extractNow(); return false">extraer ahora</a>`;
+  const running = extraction.since > 0;
+  const parts = [];
+  let next = 30000;
+
+  if (running && refreshStatus) {
+    const s = await api("/api/extract-status").catch((e) => ({ error: e.message }));
+    // La ejecución que lanzamos es la primera creada después del clic (con margen por relojes desfasados).
+    const run = s.run && Date.parse(s.run.created_at) > extraction.since - 60000 ? s.run : null;
+    const log = run ? ` · <a href="${esc(run.url)}" target="_blank" rel="noopener">ver en GitHub</a>` : "";
+    next = 5000;
+    if (s.error) {
+      extraction.since = 0;
+      extraction.notice = `❌ No se puede consultar la extracción: ${esc(s.error)}.`;
+    } else if (!run) {
+      if (Date.now() - extraction.since > 5 * 60000) {
+        extraction.since = 0;
+        extraction.notice = "⚠️ GitHub Actions no ha arrancado la extracción tras 5 minutos. Mira la pestaña Actions del repo.";
+      } else parts.push("🚀 Extracción lanzada. Esperando a que GitHub Actions la arranque (suele tardar menos de un minuto)…");
+    } else if (run.status !== "completed") {
+      parts.push(run.status === "in_progress"
+        ? `⚙️ Extrayendo artículos… quedan ${p.pending}${log}`
+        : `⏳ En cola en GitHub Actions…${log}`);
+    } else {
+      extraction.since = 0;
+      extraction.notice = run.conclusion === "success"
+        ? `✅ Extracción terminada${p.failed ? ` · ${plural(p.failed, "enlace")} sin artículo` : ""}${log}`
+        : `❌ La extracción falló en GitHub Actions${log}. Si es la primera vez, revisa que el repo tenga los secretos
+           <code>TWEETSHELF_URL</code> y <code>TWEETSHELF_TOKEN</code>.`;
+      refresh();
+    }
+  }
+
+  if (extraction.notice) parts.push(extraction.notice);
+  if (p.pending && !extraction.since) {
+    parts.push(`⏳ ${plural(p.pending, "artículo")} pendiente${p.pending === 1 ? "" : "s"} de extraer
+      · <a href="#" onclick="extractNow(); return false">extraer ahora</a>`);
+  }
+  $("#progress").classList.toggle("hidden", !parts.length);
+  $("#progressText").innerHTML = parts.join("<br>");
+
   const before = state.stats?.pending;
   if (before !== undefined && before !== p.pending) refresh();
   if (state.stats) state.stats.pending = p.pending;
-  pollTimer = setTimeout(pollProgress, 30000);
+  if (p.pending || extraction.since) pollTimer = setTimeout(pollProgress, next);
 }
 
 // ------------------------------------------------------------------ eventos
@@ -293,7 +350,7 @@ document.addEventListener("click", async (e) => {
       if (!confirm("¿Eliminar este elemento de tu estantería?")) return;
       await api(`/api/items/${it.id}`, { method: "DELETE" }); closeDrawer(); return refresh();
     }
-    if (k === "refetch") { await api(`/api/items/${it.id}/refetch`, { method: "POST" }); toast("Reextrayendo…"); pollProgress(); return openItem(it); }
+    if (k === "refetch") { trackExtraction(await api(`/api/items/${it.id}/refetch`, { method: "POST" })); toast("Reextrayendo…"); return openItem(it); }
     await patch(it, { [k]: !it[k] }); syncItem(it); loadStats(); return openItem(it);
   }
   const rm = t.closest("[data-rm]");
@@ -308,7 +365,7 @@ $("#retryBtn").onclick = async (e) => {
   e.preventDefault();
   const r = await api("/api/retry-failed", { method: "POST" });
   toast(`${r.queued} en cola para reintentar`);
-  refresh(); pollProgress();
+  refresh(); trackExtraction(r);
 };
 $("#importBtn").onclick = openImport;
 $("#moreBtn").onclick = () => load(true);

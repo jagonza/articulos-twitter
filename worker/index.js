@@ -171,14 +171,35 @@ async function saveArticles(db, results) {
   return { saved: rows.length };
 }
 
+const GH_ERRORS = {
+  401: "GitHub no acepta el token GITHUB_TOKEN (¿caducado o mal copiado?)",
+  403: "El token GITHUB_TOKEN no tiene permiso «Actions: Read and write» sobre el repo",
+  404: "GitHub no encuentra el repo o el workflow: revisa GITHUB_REPO y que el token tenga acceso al repo",
+  422: "GitHub no encuentra la rama a ejecutar (GITHUB_REF)",
+};
+
+const github = (env, path, opts = {}) => fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/extract.yml${path}`, {
+  ...opts,
+  headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "tweetshelf" },
+});
+
 async function triggerExtraction(env) {
   if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return { triggered: false, reason: "not_configured" };
-  const r = await fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/extract.yml/dispatches`, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "tweetshelf" },
-    body: JSON.stringify({ ref: env.GITHUB_REF || "main" }),
-  });
-  return { triggered: r.ok, status: r.status };
+  const r = await github(env, "/dispatches", { method: "POST", body: JSON.stringify({ ref: env.GITHUB_REF || "main" }) });
+  if (r.ok) return { triggered: true };
+  return { triggered: false, reason: "github_error", status: r.status, message: GH_ERRORS[r.status] || `GitHub respondió ${r.status}` };
+}
+
+// Última ejecución del extractor en GitHub Actions, para enseñar en qué va.
+async function extractionStatus(env) {
+  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return { configured: false };
+  const r = await github(env, "/runs?per_page=1");
+  if (!r.ok) return { configured: true, error: GH_ERRORS[r.status] || `GitHub respondió ${r.status}` };
+  const run = (await r.json()).workflow_runs?.[0];
+  return { configured: true, run: run && {
+    status: run.status, conclusion: run.conclusion, event: run.event,
+    created_at: run.created_at, updated_at: run.updated_at, url: run.html_url,
+  } };
 }
 
 // ------------------------------------------------------------------ resto de la API
@@ -252,6 +273,7 @@ async function api(req, env, url) {
     return json({ pending: r.pending || 0, failed: r.failed || 0 });
   }
   if (path === "/api/extract-now" && method === "POST") return json(await triggerExtraction(env));
+  if (path === "/api/extract-status") return json(await extractionStatus(env));
   if (path === "/api/retry-failed" && method === "POST") {
     const r = await db.prepare("UPDATE items SET article_status = 'pending' WHERE article_status = 'failed'").run();
     return json({ queued: r.meta.changes, ...(await triggerExtraction(env)) });

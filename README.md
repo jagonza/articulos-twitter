@@ -4,12 +4,14 @@ Tu estantería de favoritos de X/Twitter: importa tus *me gusta* y tus elementos
 
 ## Qué hace
 
-- **Importa** desde el archivo de datos de X (el `.zip` entero o `data/like.js`), desde el script de guardados incluido (`tools/export_bookmarks.js`) o desde el JSON/CSV de exportadores como *twitter-web-exporter*. Los ficheros se leen en tu navegador, así que el `.zip` puede pesar gigas: sólo se suben los tuits. Si un tuit aparece en varias fuentes se fusiona.
+- **Importa** desde el archivo de datos de X (el `.zip` entero o `data/like.js`), desde el script de exportación incluido (`public/export_x.js`, con botón «Copiar script» en la app), que trae guardados o me gusta con autor, enlaces reales, tuits citados y Artículos de X o desde el JSON/CSV de exportadores como *twitter-web-exporter*. Los ficheros se leen en tu navegador, así que el `.zip` puede pesar gigas: sólo se suben los tuits. Si un tuit aparece en varias fuentes se fusiona.
 - **Extrae el artículo** de cada enlace (resuelve `t.co` y saca título, autor, sitio, fecha, imagen y texto limpio con [trafilatura](https://github.com/adbar/trafilatura)). Lo hace GitHub Actions cada 3 horas, o al momento con «extraer ahora».
 - **Búsqueda de texto completo** (FTS5, sin distinguir acentos) en tuits, autores, artículos, notas y etiquetas, con fragmentos resaltados.
 - **Organiza**: favoritos ⭐, leído ✅, archivo, notas con autoguardado y etiquetas (manuales y automáticas según el sitio: vídeo, código, paper, newsletter, lectura larga…).
 - **Filtra** por vista (por leer, favoritos, artículos, sólo tuits, con notas, archivados), etiqueta, sitio y autor. Ordena por fecha, relevancia, duración de lectura o al azar.
 - **Modo lector**, **🎲 Sorpréndeme** (un artículo sin leer al azar), atajos de teclado (`/` buscar · `j`/`k` moverse · `Enter` abrir · `f` favorito · `r` leído · `e` archivar · `Esc` cerrar), tema claro/oscuro y móvil.
+- **Tuits citados** como elementos propios: se ven dentro del tuit que los cita y en el lector aparece «Citado por», con «Quedarme sólo con el citado» pasas favorito, notas y etiquetas al citado y el original se archiva (y se marca para quitar de X).
+- **Limpia X**: marca con 🧹 (o la tecla `x`) lo que ya tienes aquí, o todo lo importado, y copia un script que lo quita de tus guardados / me gusta de X.
 - **Exporta** a JSON completo o a Markdown (para Obsidian/Notion).
 
 ## Cómo está montado (coste: 0 €)
@@ -30,14 +32,14 @@ Para no acercarse a los 500 MB, cada artículo guarda como mucho 60.000 caracter
 
 ## Puesta en marcha
 
-La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`schema.sql`).
+La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`schema.sql`; los cambios posteriores están en `migrations/`).
 
-1. **Despliega el Worker.** En el panel de Cloudflare: *Workers & Pages → Create → Import a repository*, elige `jagonza/articulos-twitter` y deja el nombre `tweetshelf` y el comando de despliegue por defecto (`npx wrangler deploy`). A partir de ahí cada push a `main` se despliega solo.
+1. **Despliega el Worker.** En el panel de Cloudflare: *Workers & Pages → Create → Import a repository*, elige `jagonza/articulos-twitter` y deja el nombre `articulos-twitter` (debe coincidir con `name` en `wrangler.toml`) y el comando de despliegue por defecto (`npx wrangler deploy`). A partir de ahí cada push a `main` se despliega solo.
 2. **Pon la contraseña.** En el Worker: *Settings → Variables and secrets → Add*, de tipo *Secret*:
    - `APP_PASSWORD`: la contraseña para entrar.
    - `API_TOKEN`: una cadena larga aleatoria (la usa el extractor).
 3. **Conecta el extractor.** En GitHub: *Settings → Secrets and variables → Actions → New repository secret*:
-   - `TWEETSHELF_URL`: la dirección del Worker, p. ej. `https://tweetshelf.tu-subdominio.workers.dev`.
+   - `TWEETSHELF_URL`: la dirección del Worker, p. ej. `https://articulos-twitter.tu-subdominio.workers.dev`.
    - `TWEETSHELF_TOKEN`: el mismo valor que `API_TOKEN`.
 4. *(Opcional)* **Botón «extraer ahora».** Crea un [token de GitHub de grano fino](https://github.com/settings/personal-access-tokens/new) sólo para este repo con permiso *Actions: Read and write* y añádelo al Worker como secretos `GITHUB_TOKEN` (el token) y `GITHUB_REPO` (`jagonza/articulos-twitter`). Sin él, los artículos se extraen en la siguiente pasada de 3 horas y la web te avisa de que falta. Con él, la barra de arriba sigue la ejecución (en cola, extrayendo, terminada o fallida, con enlace al registro de GitHub).
 
@@ -46,7 +48,7 @@ La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`sch
 | Qué | Cómo |
 | --- | --- |
 | **Me gusta** | X → Configuración → Tu cuenta → *Descargar un archivo de tus datos*. Llega en ~24 h. Sube el `.zip` tal cual. `like.js` no trae autor ni fecha; si luego importas los mismos tuits desde otra fuente, se completan. |
-| **Guardados** | El archivo de X no los incluye. Abre `https://x.com/i/bookmarks`, pega `tools/export_bookmarks.js` en la consola del navegador y sube el JSON que descarga. |
+| **Guardados** | El archivo de X no los incluye. En la app, *Importar → 📋 Copiar script*. Abre `https://x.com/i/bookmarks`, pega el script en la consola del navegador (la primera vez Chrome pide escribir `allow pasting`) y sube el JSON que descarga. |
 
 ## Desarrollo en local
 
@@ -69,7 +71,6 @@ schema.sql             tablas, índice de búsqueda y triggers de D1
 public/                interfaz (HTML/CSS/JS sin dependencias; zip.js en public/vendor)
 extractor/             extracción de artículos en Python (la ejecuta GitHub Actions)
 .github/workflows/     extract.yml, cada 3 horas o bajo demanda
-tools/                 script para exportar los guardados de X
 sample/                datos de ejemplo
 ```
 

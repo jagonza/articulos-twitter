@@ -129,6 +129,21 @@ select, .btn, .icon-btn {
 .tweet .who span { font-weight: 400; color: var(--muted); }
 .tweet .text { white-space: pre-wrap; word-break: break-word; }
 .tweet.small .text { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.quote {
+  border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; margin: -2px 0 10px; font-size: 13px; cursor: pointer;
+}
+.quote:hover { border-color: var(--accent); }
+.quote::after { content: ""; display: block; clear: both; }
+.quote .q-thumb { float: right; width: 64px; height: 64px; object-fit: cover; border-radius: 8px; margin: 0 0 4px 10px; }
+.quote .who { font-weight: 600; font-size: 12.5px; }
+.quote .who span { font-weight: 400; color: var(--muted); }
+.quote .q-title { font-weight: 600; margin-top: 2px; }
+.quote .text { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
+.side-box .quote { margin: 10px 0 0; background: var(--panel); }
+.radios { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
+.radio { display: flex; gap: 8px; align-items: center; cursor: pointer; }
+.btn.small { font-size: 13px; padding: 7px 10px; }
+kbd { font: 12px var(--sans); background: var(--line); border-radius: 4px; padding: 1px 5px; }
 .card .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .card .meta .chip { font-size: 11px; padding: 1px 7px; }
 .card .actions { margin-left: auto; display: flex; gap: 2px; }

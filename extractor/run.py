@@ -1,7 +1,7 @@
 """Extrae los artículos pendientes de Tweetshelf y los guarda vía la API del Worker.
 
 Variables de entorno:
-  TWEETSHELF_URL    p. ej. https://tweetshelf.tu-usuario.workers.dev
+  TWEETSHELF_URL    p. ej. https://articulos-twitter.tu-usuario.workers.dev
   TWEETSHELF_TOKEN  el mismo valor que el secreto API_TOKEN del Worker
   MAX_MINUTES       tiempo máximo de ejecución (por defecto 20)
 """

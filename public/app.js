@@ -22,7 +22,11 @@ const fmtDate = (d) => d && !isNaN(d) ? d.toLocaleDateString("es-ES", { day: "nu
 const VIEWS = [
   ["all", "📥", "Todo"], ["unread", "📖", "Por leer"], ["favorites", "⭐", "Favoritos"],
   ["articles", "📰", "Artículos"], ["tweets", "💬", "Sólo tuits"], ["notes", "📝", "Con notas"], ["archived", "🗄️", "Archivados"],
+  ["x_remove", "🧹", "Para quitar de X"],
 ];
+const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado" };
+// Se puede quitar de X lo que llegó como guardado o me gusta y no se ha quitado ya.
+const inX = (it) => it.x_status !== "removed" && it.sources.some((s) => s === "like" || s === "bookmark");
 
 const state = { view: "all", q: "", tag: "", domain: "", author: "", sort: "recent", items: [], total: 0, focus: -1, open: null };
 
@@ -72,6 +76,17 @@ function tweetBlock(it, small = true) {
   return `<div class="tweet ${small ? "small" : ""}">${avatar(it)}<div><div class="who">${who}</div><div class="text">${linkify(it.tweet_text)}</div></div></div>`;
 }
 
+// Tuit citado, en pequeño; al pulsarlo se abre como elemento propio.
+function quoteBlock(q) {
+  if (!q) return "";
+  const who = q.author_handle ? `${esc(q.author_name || "")} <span>@${esc(q.author_handle)}</span>` : "<span>Tuit citado</span>";
+  const title = q.article_status === "ok" && q.article_title ? `<div class="q-title">📰 ${esc(q.article_title)}</div>` : "";
+  const thumb = q.article_image || (q.media || [])[0];
+  return `<div class="quote" data-open="${esc(q.id)}" title="Abrir el tuit citado">
+    ${thumb ? `<img class="q-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
+    <div class="who">↪ ${who}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
+}
+
 function linkify(text) {
   return esc(text).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${u.replace(/^https?:\/\//, "").slice(0, 40)}${u.length > 48 ? "…" : ""}</a>`);
 }
@@ -80,7 +95,8 @@ function card(it, i) {
   const hasArticle = it.article_status === "ok";
   const img = it.article_image || it.media[0];
   const cover = hasArticle || img
-    ? img ? `<img class="cover" loading="lazy" src="${esc(img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cover fallback',style:'background:hsl(${hue(it.domain || it.id)} 45% 55%)',textContent:'${esc((it.domain || "?")[0].toUpperCase())}'}))">`
+    ? img && !hasArticle ? `<img class="cover" loading="lazy" src="${esc(img)}" alt="" onerror="this.remove()">`
+    : img ? `<img class="cover" loading="lazy" src="${esc(img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cover fallback',style:'background:hsl(${hue(it.domain || it.id)} 45% 55%)',textContent:'${esc((it.domain || "?")[0].toUpperCase())}'}))">`
       : `<div class="cover fallback" style="background:linear-gradient(135deg,hsl(${hue(it.domain || it.id)} 50% 55%),hsl(${(hue(it.domain || it.id) + 40) % 360} 55% 45%))">${esc((it.article_site || it.domain || "?")[0].toUpperCase())}</div>`
     : "";
   const mins = readMins(it.article_words);
@@ -94,12 +110,14 @@ function card(it, i) {
         ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : it.article_excerpt ? `<p class="excerpt">${esc(it.article_excerpt)}</p>` : ""}`
         : `${it.article_url ? `<div class="site"><img src="${favicon(it.domain)}" alt=""><a href="${esc(it.article_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.domain)} ↗</a></div>` : ""}${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}`}
       ${tweetBlock(it, true)}
+      ${quoteBlock(it.quoted)}
       <div class="meta">
         ${status}
         ${it.tags.slice(0, 4).map((t) => `<span class="chip" data-tag="${esc(t)}">#${esc(t)}</span>`).join("")}
         <span class="actions">
           <button class="act ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">⭐</button>
           <button class="act ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">✅</button>
+          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">🧹</button>` : ""}
           <button class="act" data-act="tweet" title="Abrir en X">𝕏</button>
         </span>
       </div>
@@ -139,6 +157,8 @@ async function openItem(it) {
       <button class="btn ghost" data-d="favorite">${full.favorite ? "⭐ Favorito" : "☆ Favorito"}</button>
       <button class="btn ghost" data-d="is_read">${full.is_read ? "✅ Leído" : "○ Marcar leído"}</button>
       <button class="btn ghost" data-d="archived">${full.archived ? "📤 Desarchivar" : "🗄️ Archivar"}</button>
+      ${inX(full) ? `<button class="btn ghost" data-d="x_status" title="Lo quitará el script de limpieza (x)">${full.x_status === "remove" ? "🧹 Se quitará de X" : "🧹 Quitar de X"}</button>`
+        : full.x_status === "removed" ? `<span class="muted small">✓ Quitado de X</span>` : ""}
       <span class="spacer"></span>
       ${full.article_url ? `<a class="btn ghost" href="${esc(full.article_url)}" target="_blank" rel="noopener">Original ↗</a>` : ""}
       <a class="btn ghost" href="${esc(full.tweet_url)}" target="_blank" rel="noopener">𝕏 ↗</a>
@@ -150,10 +170,14 @@ async function openItem(it) {
         <h1>${esc(full.article_title)}</h1>
         <div class="byline">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date)), mins && `${mins} min de lectura`].filter(Boolean).map(esc).join(" · ")}</div>` : `<h1>Tuit</h1>`}
 
-      <div class="side-box"><h4>El tuit · ${fmtDate(tweetDate(full.id))} · ${full.sources.map((s) => s === "like" ? "me gusta" : "guardado").join(" + ")}</h4>
+      <div class="side-box"><h4>El tuit · ${fmtDate(tweetDate(full.id))} · ${full.sources.map((s) => SOURCE_LABEL[s] || s).join(" + ")}</h4>
         ${tweetBlock(full, false)}
         ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="">`).join("")}</div>` : ""}
+        ${quoteBlock(full.quoted)}
+        ${full.quoted && !full.archived ? `<p class="small"><button class="btn ghost small" data-d="keep-quoted"
+          title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : ""}
       </div>
+      ${full.quoted_by?.length ? `<div class="side-box"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
 
       <div class="side-box"><h4>Mis notas <span class="save-state" id="saveState"></span></h4>
         <textarea id="note" placeholder="¿Por qué lo guardaste? ¿Qué te llevas?">${esc(full.note)}</textarea>
@@ -278,10 +302,13 @@ document.addEventListener("click", async (e) => {
     e.stopPropagation();
     const it = state.items[act.closest(".card").dataset.i];
     if (act.dataset.act === "tweet") return window.open(it.tweet_url, "_blank");
+    if (act.dataset.act === "x_status") { await toggleXRemove(it); syncItem(it); return; }
     await patch(it, { [act.dataset.act]: !it[act.dataset.act] });
     syncItem(it); loadStats();
     return;
   }
+  const open = t.closest("[data-open]");
+  if (open) { e.stopPropagation(); return openItem({ id: open.dataset.open }); }
   const c = t.closest(".card");
   if (c) { state.focus = +c.dataset.i; return openItem(state.items[c.dataset.i]); }
 
@@ -293,6 +320,13 @@ document.addEventListener("click", async (e) => {
       if (!confirm("¿Eliminar este elemento de tu estantería?")) return;
       await api(`/api/items/${it.id}`, { method: "DELETE" }); closeDrawer(); return refresh();
     }
+    if (k === "keep-quoted") {
+      const r = await api(`/api/items/${it.id}/keep-quoted`, { method: "POST" });
+      toast("↪ Te quedas con el citado; el original queda archivado y marcado para quitar de X");
+      refresh();
+      return openItem({ id: r.kept });
+    }
+    if (k === "x_status") { await toggleXRemove(it); syncItem(it); return openItem(it); }
     if (k === "refetch") { await api(`/api/items/${it.id}/refetch`, { method: "POST" }); toast("Reextrayendo…"); pollProgress(); return openItem(it); }
     await patch(it, { [k]: !it[k] }); syncItem(it); loadStats(); return openItem(it);
   }
@@ -304,6 +338,15 @@ document.addEventListener("click", async (e) => {
 });
 
 $("#scrim").onclick = closeDrawer;
+$("#copyScriptBtn").onclick = async (e) => {
+  const code = await fetch("/export_x.js").then((r) => r.text());
+  try {
+    await navigator.clipboard.writeText(code);
+    e.target.textContent = "✅ Copiado, pégalo en la consola de X";
+  } catch {
+    window.open("/export_x.js", "_blank"); // sin permiso de portapapeles: que lo copie a mano
+  }
+};
 $("#retryBtn").onclick = async (e) => {
   e.preventDefault();
   const r = await api("/api/retry-failed", { method: "POST" });
@@ -361,6 +404,11 @@ document.addEventListener("keydown", async (e) => {
   const it = state.open || state.items[state.focus];
   if (!it) return;
   if (e.key === "Enter" && !state.open) return openItem(it);
+  if (e.key === "x" && inX(it)) {
+    await toggleXRemove(it); syncItem(it);
+    if (state.open) openItem(it);
+    return toast(it.x_status === "remove" ? "🧹 Se quitará de X" : "Ya no se quitará de X");
+  }
   const field = { f: "favorite", r: "is_read", e: "archived" }[e.key];
   if (field) {
     await patch(it, { [field]: !it[field] }); syncItem(it); loadStats();
@@ -368,6 +416,50 @@ document.addEventListener("keydown", async (e) => {
     toast({ favorite: it.favorite ? "⭐ Favorito" : "Quitado de favoritos", is_read: it.is_read ? "✅ Leído" : "Marcado sin leer", archived: it.archived ? "🗄️ Archivado" : "📤 Desarchivado" }[field]);
   }
 });
+
+async function toggleXRemove(it) {
+  await patch(it, { x_status: it.x_status === "remove" ? null : "remove" });
+  loadStats();
+}
+
+// ------------------------------------------------------------------ limpiar X
+
+let cleanIds = [];
+function openClean() {
+  const x = state.stats?.x || { marked: 0, bookmarks: 0, likes: 0 };
+  $("#cleanCounts").innerHTML = [
+    ["marked", `Sólo los que he marcado con 🧹 (${x.marked})`, x.marked],
+    ["bookmarks", `Todos los guardados que ya están aquí (${x.bookmarks})`, x.bookmarks],
+    ["likes", `Todos los me gusta que ya están aquí (${x.likes})`, x.likes],
+  ].map(([k, label, n], i) => `<label class="radio"><input type="radio" name="cleanScope" value="${k}" ${i === 0 ? "checked" : ""} ${n ? "" : "disabled"}> ${label}</label>`).join("");
+  $("#cleanDone").classList.add("hidden");
+  $("#cleanCopy").textContent = "📋 Copiar script de limpieza";
+  $("#cleanDlg").showModal();
+}
+window.openClean = openClean;
+
+$("#cleanCopy").onclick = async () => {
+  const scope = document.querySelector('input[name="cleanScope"]:checked')?.value || "marked";
+  const data = await api(`/api/x-cleanup?scope=${scope}`);
+  cleanIds = [...new Set([...data.bookmarks, ...data.likes])];
+  if (!cleanIds.length) return toast("No hay nada que quitar");
+  const code = (await fetch("/clean_x.js").then((r) => r.text())).replace("__TWEETSHELF_DATA__", JSON.stringify(data));
+  try {
+    await navigator.clipboard.writeText(code);
+    $("#cleanCopy").textContent = `✅ Copiado (${cleanIds.length}). Pégalo en la consola de X`;
+  } catch {
+    toast("No he podido copiar al portapapeles");
+    return;
+  }
+  $("#cleanDone").classList.remove("hidden");
+};
+
+$("#cleanDone").onclick = async () => {
+  const r = await api("/api/x-cleanup/done", { method: "POST", body: JSON.stringify({ ids: cleanIds }) });
+  $("#cleanDlg").close();
+  toast(`✓ ${r.updated} marcados como quitados de X`);
+  refresh();
+};
 
 function toast(msg) {
   const t = $("#toast");

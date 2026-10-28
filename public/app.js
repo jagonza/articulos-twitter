@@ -205,6 +205,15 @@ function threadBlock(it) {
     </li>`).join("")}</ol></div>`;
 }
 
+// Autor en la línea superior de la tarjeta: avatar pequeño y @usuario; al pulsarlo filtra por autor.
+function byline(it) {
+  if (!it.author_handle) return "";
+  const av = it.author_avatar
+    ? `<img class="av" src="${esc(it.author_avatar)}" alt="" loading="lazy" onerror="this.remove()">`
+    : `<i class="av">${esc((it.author_name || it.author_handle)[0].toUpperCase())}</i>`;
+  return `<span class="by" data-author="${esc(it.author_handle)}" title="Filtrar por @${esc(it.author_handle)}">${av}<span class="h">@${esc(it.author_handle)}</span></span>`;
+}
+
 function card(it, i) {
   const hasArticle = it.article_status === "ok";
   const img = it.article_image || it.media[0];
@@ -214,19 +223,19 @@ function card(it, i) {
       : `<div class="cover fallback" style="background:linear-gradient(135deg,hsl(${hue(it.domain || it.id)} 50% 55%),hsl(${(hue(it.domain || it.id) + 40) % 360} 55% 45%))">${esc((it.article_site || it.domain || "?")[0].toUpperCase())}</div>`
     : "";
   const mins = readMins(it.article_words);
-  const fromX = isXDomain(it.domain) || /^(x|twitter)$/i.test(it.article_site || "");
+  const fromX = hasArticle ? isXDomain(it.domain) || /^(x|twitter)$/i.test(it.article_site || "") : !it.article_url;
+  const when = hasArticle ? (mins ? `${mins} min` : "") : fmtDate(tweetDate(it.id));
   const status = it.article_status === "pending" ? "⏳ extrayendo…" : it.article_status === "failed" ? `<span class="status-fail" title="${esc(it.article_error)}">⚠︎ no se pudo leer</span>` : "";
   return `<article class="card ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
     ${it.note ? `<span class="badge-note" title="${esc(it.note)}">📝</span>` : ""}
     ${cover}
     <div class="body">
-      ${hasArticle ? `<div class="site">${fromX
+      <div class="site">${fromX
           ? `<button class="src-x" data-act="tweet" title="Abrir en X">${icon("x")}</button>`
-          : `<img src="${favicon(it.domain)}" alt=""><span class="site-name">${esc(it.article_site || it.domain)}</span>`}${mins ? `<span class="dot">·</span>${mins} min` : ""}${it.author_handle ? `<span class="by" data-author="${esc(it.author_handle)}" title="Filtrar por @${esc(it.author_handle)}">@${esc(it.author_handle)}</span>` : ""}</div>
-        <h2>${esc(it.article_title)}</h2>
+          : `<img src="${favicon(it.domain)}" alt="">${hasArticle ? `<span class="site-name">${esc(it.article_site || it.domain)}</span>` : `<a href="${esc(it.article_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.domain)} ↗</a>`}`}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
+      ${hasArticle ? `<h2>${esc(it.article_title)}</h2>
         ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : it.article_excerpt ? `<p class="excerpt">${esc(it.article_excerpt)}</p>` : ""}`
-        : `${it.article_url ? `<div class="site"><img src="${favicon(it.domain)}" alt=""><a href="${esc(it.article_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.domain)} ↗</a></div>` : ""}${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}`}
-      ${hasArticle ? "" : tweetBlock(it, true)}
+        : `${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}<p class="tweet-text">${linkify(it.tweet_text)}</p>`}
       ${it.thread_count ? `<div class="thread-badge">🧵 Hilo de ${it.thread_count} tuits</div>` : ""}
       ${quoteBlock(it.quoted)}
       <div class="meta">
@@ -236,7 +245,7 @@ function card(it, i) {
           <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">${icon("star")}</button>
           <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">${icon("check")}</button>
           ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon("brush")}</button>` : ""}
-          ${hasArticle && fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X">${icon("x")}</button>`}
+          ${fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X">${icon("x")}</button>`}
         </span>
       </div>
     </div></article>`;

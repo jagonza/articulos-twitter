@@ -121,8 +121,11 @@ select, .btn, .icon-btn {
 .card .site .src-x { all: unset; cursor: pointer; display: grid; place-items: center; width: 22px; height: 22px; margin-left: -3px; border-radius: 6px; color: var(--ink); }
 .card .site .src-x:hover { background: var(--bg); }
 .card .site .src-x svg { width: 15px; height: 15px; }
-.card .site .by { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .site .by { margin-left: auto; min-width: 0; display: flex; align-items: center; gap: 6px; }
+.card .site .by .h { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .card .site .by:hover { color: var(--accent); }
+.card .site .av { width: 20px; height: 20px; border-radius: 50%; flex: none; object-fit: cover; background: var(--line); display: grid; place-items: center; font: 600 10px var(--sans); font-style: normal; }
+.card .tweet-text { margin: 0 0 10px; font-size: 15px; white-space: pre-wrap; word-break: break-word; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
 .card h2 { font: 600 22px/1.2 var(--sans); margin: 0 0 8px; letter-spacing: -.02em; text-wrap: balance; }
 .card .excerpt { font-size: 13.5px; color: var(--muted); margin: 0 0 10px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .card .snippet { font-size: 13px; margin: 0 0 10px; }

@@ -377,7 +377,8 @@ function placeCards(force) {
     grid.replaceChildren(...cardNodes);
     return;
   }
-  const cols = Math.max(1, Math.floor((grid.clientWidth + GRID_GAP) / (CARD_MIN + GRID_GAP)));
+  // Como mucho tres columnas: en escritorio cuatro se ven demasiado estrechas.
+  const cols = Math.min(3, Math.max(1, Math.floor((grid.clientWidth + GRID_GAP) / (CARD_MIN + GRID_GAP))));
   if (cols === gridCols && !force) return;
   gridCols = cols;
   const columns = Array.from({ length: cols }, () => Object.assign(document.createElement("div"), { className: "col" }));

@@ -481,6 +481,8 @@ async function openItem(it) {
             full.x_status === "remove" ? "Se quitará de tus " + (xIcon(full) === "bookmarkOff" ? "guardados" : "me gusta") + " de X con el script de limpieza (x)" : "Marcar para quitar de X (x)") : ""}
           ${verEnX}
           ${keepQuoted}
+          ${full.urls.length ? `<button class="btn wide" data-d="refetch">${icon("refresh")}<span>Volver a extraer el artículo</span></button>` : ""}
+          <button class="btn wide danger" data-d="delete">${icon("trash")}<span>Eliminar de la estantería</span></button>
         </div>
 
         ${isArticle ? `<section>
@@ -506,10 +508,6 @@ async function openItem(it) {
           <datalist id="tagSuggest">${(state.stats?.tags || []).map((t) => `<option value="${esc(t.tag)}">`).join("")}</datalist>
         </section>
 
-        <div class="foot">
-          ${full.urls.length ? `<button class="btn" data-d="refetch">${icon("refresh")} Volver a extraer el artículo</button>` : ""}
-          <button class="btn danger" data-d="delete">${icon("trash")} Eliminar de la estantería</button>
-        </div>
       </div>
     </aside>`;
   const wasOpen = d.classList.contains("open");

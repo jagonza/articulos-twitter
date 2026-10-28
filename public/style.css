@@ -173,6 +173,7 @@ select, .btn, .icon-btn {
 .quote::after { content: ""; display: block; clear: both; }
 .quote .q-thumb { float: right; width: 64px; height: 64px; object-fit: cover; border-radius: 8px; margin: 0 0 4px 10px; }
 .quote .who { font-weight: 600; font-size: 12.5px; }
+.quote .who svg.i { width: 14px; height: 14px; vertical-align: -2px; color: var(--muted); }
 .quote .who span { font-weight: 400; color: var(--muted); }
 .quote .q-title { font-weight: 600; margin-top: 2px; }
 .quote .text { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
@@ -222,6 +223,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card.row .site { margin-bottom: 4px; }
 .card.row .ttl { font: 600 17px/1.35 var(--ui); letter-spacing: -.01em; color: var(--strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card.row.tw .ttl { font: 400 16.5px/1.4 var(--read); color: var(--body); }
+.card.row .sub svg.i { width: 14px; height: 14px; vertical-align: -2px; }
 .card.row .sub { font-size: 14px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
 .more-wrap { position: relative; }
 .card .act.menu-btn { width: 36px; height: 36px; background: none; color: var(--muted); }
@@ -372,6 +374,8 @@ html.reading { overflow: hidden; }
 .drawer .side-body { flex: 1; display: flex; flex-direction: column; gap: 26px; padding: 22px; }
 .drawer .acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .drawer .acts .btn { justify-content: center; padding: 0 10px; }
+.drawer .acts a.btn { color: var(--strong); text-decoration: none; }
+.drawer .acts .btn.wide { grid-column: 1 / -1; }
 .drawer .acts .btn span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .drawer .acts .btn.on { background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
 .drawer .acts .act-favorite.on { background: color-mix(in srgb, var(--star) 14%, transparent); border-color: color-mix(in srgb, var(--star) 45%, transparent); color: var(--star); }
@@ -387,9 +391,6 @@ html.reading { overflow: hidden; }
 .drawer .origin .quote { margin: 10px 0 0; }
 .drawer .o-thread { margin-top: 12px; }
 .drawer .o-thread h4 { margin: 0 0 4px; font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
-.drawer .o-foot { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0 0; }
-.drawer .o-foot .ext { font-size: 13px; }
-.drawer .o-foot .btn { margin-left: auto; }
 .drawer textarea, .drawer #tagInput { box-sizing: border-box; width: 100%; border: 1px solid var(--btn-line); border-radius: 12px; background: var(--field); color: var(--strong); }
 .drawer textarea { display: block; min-height: 120px; padding: 12px 14px; font: 14px/1.5 var(--ui); resize: vertical; }
 .drawer #tagInput { height: 40px; padding: 0 12px; font: 14px var(--ui); border-radius: 10px; }

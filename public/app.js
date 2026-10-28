@@ -26,6 +26,7 @@ const ICONS = {
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
   external: '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
+  quote: '<path d="M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/><path d="M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/>',
   dots: '<path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
   trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
 };
@@ -108,7 +109,7 @@ function quoteBlock(q, compact = false) {
   const thumb = q.article_image || (q.media || [])[0];
   return `<div class="quote" data-open="${esc(q.id)}" title="Abrir el tuit citado">
     ${thumb ? `<img class="q-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
-    <div class="who">↪ ${who}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
+    <div class="who">${icon("quote")} ${who}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
 }
 
 // X manda el texto de los tuits con &amp;, &lt; y &gt; ya escapados.
@@ -347,7 +348,7 @@ function cardRow(it, i) {
   const q = it.quoted;
   const sub = it.snippet ? marked(it.snippet)
     : hasArticle ? esc(excerpt)
-    : q ? `↪ ${q.author_handle ? esc(`@${q.author_handle}: `) : ""}${esc(q.tweet_text)}` : "";
+    : q ? `${icon("quote")} ${q.author_handle ? esc(`@${q.author_handle}: `) : ""}${esc(q.tweet_text)}` : "";
   return `<article class="card row ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
     <div class="thumb">${hasArticle ? cover(it) : cover(it, it.media[0] || it.author_avatar)}</div>
     <div class="mid">
@@ -433,8 +434,9 @@ async function openItem(it) {
   // La entradilla sólo si no es el principio del propio texto (en los Artículos de X lo es).
   const flat = (s) => plainMd(s).replace(/\s+/g, " ").trim();
   const dek = full.article_excerpt && !flat(full.article_text).slice(0, 400).includes(flat(full.article_excerpt).slice(0, 50)) ? full.article_excerpt : "";
-  const keepQuoted = full.quoted && !full.archived ? `<button class="btn small" data-d="keep-quoted"
-    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button>` : "";
+  const verEnX = full.tweet_url ? `<a class="btn" href="${esc(full.tweet_url)}" target="_blank" rel="noopener" title="Abrir en X">${icon("external")}<span>Ver en X</span></a>` : "";
+  const keepQuoted = full.quoted && !full.archived ? `<button class="btn wide" data-d="keep-quoted"
+    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">${icon("quote")}<span>Quedarme sólo con el citado</span></button>` : "";
   const who = `<b>${esc(full.author_name || (full.author_handle ? "@" + full.author_handle : "Tuit"))}</b>`;
   const handle = full.author_handle ? `<button class="link" data-author="${esc(full.author_handle)}" title="Filtrar por @${esc(full.author_handle)}">@${esc(full.author_handle)}</button> · ` : "";
   const saved = full.imported_at ? fmtDate(new Date(full.imported_at.replace(" ", "T") + "Z")) : "";
@@ -477,19 +479,20 @@ async function openItem(it) {
           ${abtn("archived", full.archived, "archive", "Archivar", "Archivado", full.archived ? "Desarchivar (e)" : "Archivar (e)")}
           ${inX(full) ? abtn("x_status", full.x_status === "remove", xIcon(full), "Quitar de X", "Se quitará de X",
             full.x_status === "remove" ? "Se quitará de tus " + (xIcon(full) === "bookmarkOff" ? "guardados" : "me gusta") + " de X con el script de limpieza (x)" : "Marcar para quitar de X (x)") : ""}
+          ${verEnX}
+          ${keepQuoted}
         </div>
 
-        <section>
-          <h3>${isArticle ? "El tuit" : "En X"}</h3>
+        ${isArticle ? `<section>
+          <h3>El tuit</h3>
           <div class="origin">
-            ${isArticle ? `<div class="o-who">${avatar(full)}<div class="o-name">${who}<span>${handle}${fmtDate(tweetDate(full.id))}</span></div></div>
+            <div class="o-who">${avatar(full)}<div class="o-name">${who}<span>${handle}${fmtDate(tweetDate(full.id))}</span></div></div>
             <div class="o-text">${linkify(full.tweet_text)}</div>
             ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}
             ${quoteBlock(full.quoted)}
-            ${threadBlock(full)}` : `<div class="o-text">${esc(sources[0].toUpperCase() + sources.slice(1))}${full.x_status === "removed" ? " · ya quitado de X" : ""}</div>`}
-            <p class="o-foot">${ext(full.tweet_url, "Ver en X")}${keepQuoted}</p>
+            ${threadBlock(full)}
           </div>
-        </section>
+        </section>` : ""}
 
         <section>
           <label for="note">Mis notas <span class="save-state" id="saveState"></span></label>
@@ -712,7 +715,7 @@ document.addEventListener("click", async (e) => {
     }
     if (k === "keep-quoted") {
       const r = await api(`/api/items/${it.id}/keep-quoted`, { method: "POST" });
-      toast("↪ Te quedas con el citado; el original queda archivado y marcado para quitar de X");
+      toast("Te quedas con el citado; el original queda archivado y marcado para quitar de X");
       refresh();
       return openItem({ id: r.kept });
     }

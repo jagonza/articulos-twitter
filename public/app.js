@@ -15,6 +15,15 @@ const plainMd = (s) => String(s ?? "").replace(/!\[[^\]]*\]\([^)]*\)?/g, "").rep
 const marked = (s) => esc(plainMd(s)).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
 const favicon = (d) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64`;
 const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
+// Iconos de Tabler (https://tabler.io/icons), en línea para no depender de nada externo.
+const ICONS = {
+  star: '<path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/>',
+  check: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/>',
+  brush: '<path d="M3 21v-4a4 4 0 1 1 4 4h-4"/><path d="M21 3a16 16 0 0 0 -12.8 10.2"/><path d="M21 3a16 16 0 0 1 -10.2 12.8"/><path d="M10.6 9a9 9 0 0 1 4.4 4.4"/>',
+  x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
+};
+const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+const isXDomain = (d) => /^(www\.)?(x|twitter)\.com$/.test(d || "");
 const hue = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 // Los ids de X llevan la fecha dentro (snowflake).
 const tweetDate = (id) => {
@@ -205,26 +214,29 @@ function card(it, i) {
       : `<div class="cover fallback" style="background:linear-gradient(135deg,hsl(${hue(it.domain || it.id)} 50% 55%),hsl(${(hue(it.domain || it.id) + 40) % 360} 55% 45%))">${esc((it.article_site || it.domain || "?")[0].toUpperCase())}</div>`
     : "";
   const mins = readMins(it.article_words);
+  const fromX = isXDomain(it.domain) || /^(x|twitter)$/i.test(it.article_site || "");
   const status = it.article_status === "pending" ? "⏳ extrayendo…" : it.article_status === "failed" ? `<span class="status-fail" title="${esc(it.article_error)}">⚠︎ no se pudo leer</span>` : "";
   return `<article class="card ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
     ${it.note ? `<span class="badge-note" title="${esc(it.note)}">📝</span>` : ""}
     ${cover}
     <div class="body">
-      ${hasArticle ? `<div class="site"><img src="${favicon(it.domain)}" alt="">${esc(it.article_site || it.domain)}${mins ? ` · ${mins} min` : ""}</div>
+      ${hasArticle ? `<div class="site">${fromX
+          ? `<button class="src-x" data-act="tweet" title="Abrir en X">${icon("x")}</button>`
+          : `<img src="${favicon(it.domain)}" alt=""><span class="site-name">${esc(it.article_site || it.domain)}</span>`}${mins ? `<span class="dot">·</span>${mins} min` : ""}${it.author_handle ? `<span class="by" data-author="${esc(it.author_handle)}" title="Filtrar por @${esc(it.author_handle)}">@${esc(it.author_handle)}</span>` : ""}</div>
         <h2>${esc(it.article_title)}</h2>
         ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : it.article_excerpt ? `<p class="excerpt">${esc(it.article_excerpt)}</p>` : ""}`
         : `${it.article_url ? `<div class="site"><img src="${favicon(it.domain)}" alt=""><a href="${esc(it.article_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.domain)} ↗</a></div>` : ""}${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}`}
-      ${tweetBlock(it, true)}
+      ${hasArticle ? "" : tweetBlock(it, true)}
       ${it.thread_count ? `<div class="thread-badge">🧵 Hilo de ${it.thread_count} tuits</div>` : ""}
       ${quoteBlock(it.quoted)}
       <div class="meta">
         ${status}
         ${it.tags.slice(0, 4).map((t) => `<span class="chip" data-tag="${esc(t)}">#${esc(t)}</span>`).join("")}
         <span class="actions">
-          <button class="act ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">⭐</button>
-          <button class="act ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">✅</button>
-          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">🧹</button>` : ""}
-          <button class="act" data-act="tweet" title="Abrir en X">𝕏</button>
+          <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">${icon("star")}</button>
+          <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">${icon("check")}</button>
+          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon("brush")}</button>` : ""}
+          ${hasArticle && fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X">${icon("x")}</button>`}
         </span>
       </div>
     </div></article>`;

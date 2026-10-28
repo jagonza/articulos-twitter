@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Tweetshelf</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Inter:wght@400;500;600&family=Geist:wght@400;500;600;700&family=Literata:ital,opsz,wght@0,7..72,400;0,7..72,500;1,7..72,400&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📚</text></svg>">
 </head>
@@ -86,7 +86,7 @@
 
   <!-- Lector -->
   <div class="scrim hidden" id="scrim"></div>
-  <aside class="drawer" id="drawer" aria-hidden="true"></aside>
+  <div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Lector" aria-hidden="true"></div>
 
   <!-- Importar -->
   <dialog id="importDlg">
@@ -124,7 +124,7 @@
       <h2>Quitar de X lo ya guardado</h2>
       <button class="icon-btn" aria-label="Cerrar">✕</button>
     </form>
-    <p class="small muted">Marca con 🧹 (o la tecla <kbd>x</kbd>) lo que quieras quitar, o elige quitar todo lo importado.
+    <p class="small muted">Marca con «Quitar de X» (o la tecla <kbd>x</kbd>) lo que quieras quitar, o elige quitar todo lo importado.
       Aquí se queda todo; sólo desaparece de tus guardados / me gusta de X. Desde la app no se puede deshacer.</p>
     <div id="cleanCounts" class="radios"></div>
     <ol class="small">

@@ -19,10 +19,14 @@ const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
 const ICONS = {
   star: '<path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/>',
   check: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/>',
-  brush: '<path d="M3 21v-4a4 4 0 1 1 4 4h-4"/><path d="M21 3a16 16 0 0 0 -12.8 10.2"/><path d="M21 3a16 16 0 0 1 -10.2 12.8"/><path d="M10.6 9a9 9 0 0 1 4.4 4.4"/>',
+  bookmarkOff: '<path d="M3 3l18 18"/><path d="M17 17v3l-5 -3l-5 3v-13m1.178 -2.818c.252 -.113 .53 -.176 .822 -.176h6a2 2 0 0 1 2 2v7"/>',
+  heartOff: '<path d="M3 3l18 18"/><path d="M19.5 12.572l-1.5 1.428m-2 2l-4 4l-7.5 -7.428a5 5 0 0 1 -1.288 -5.068a4.976 4.976 0 0 1 1.788 -2.504m3 -1c1.56 0 3.05 .727 4 2a5 5 0 0 1 7.5 6.572"/>',
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   archive: '<path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><path d="M10 12h4"/>',
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
+  external: '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/>',
+  refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
+  trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
 };
 const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 const isXDomain = (d) => /^(www\.)?(x|twitter)\.com$/.test(d || "");
@@ -41,6 +45,8 @@ const VIEWS = [
 const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado" };
 // Se puede quitar de X lo que llegó como guardado o me gusta y no se ha quitado ya.
 const inX = (it) => it.x_status !== "removed" && it.sources.some((s) => s === "like" || s === "bookmark");
+// Quitar de X es quitarlo de guardados o, si sólo llegó como me gusta, quitar el me gusta.
+const xIcon = (it) => (it.sources.includes("bookmark") ? "bookmarkOff" : "heartOff");
 
 const state = { view: "all", q: "", tag: "", domain: "", author: "", sort: "recent", items: [], total: 0, focus: -1, open: null };
 
@@ -79,15 +85,8 @@ const refresh = () => Promise.all([load(), loadStats()]);
 
 function avatar(it) {
   return it.author_avatar
-    ? `<img class="avatar" src="${esc(it.author_avatar)}" alt="">`
+    ? `<img class="avatar" src="${esc(it.author_avatar)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'avatar',textContent:'${esc((it.author_name || it.author_handle || "?")[0].toUpperCase())}'}))">`
     : `<div class="avatar">${esc((it.author_name || it.author_handle || "?")[0].toUpperCase())}</div>`;
-}
-
-function tweetBlock(it, small = true) {
-  const who = it.author_handle
-    ? `${esc(it.author_name || "")} <span>@${esc(it.author_handle)}</span>`
-    : `<span>Tuit · ${fmtDate(tweetDate(it.id))}</span>`;
-  return `<div class="tweet ${small ? "small" : ""}">${avatar(it)}<div><div class="who">${who}</div><div class="text">${linkify(it.tweet_text)}</div></div></div>`;
 }
 
 // Tuit citado, en pequeño; al pulsarlo se abre como elemento propio.
@@ -101,8 +100,11 @@ function quoteBlock(q) {
     <div class="who">↪ ${who}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
 }
 
+// X manda el texto de los tuits con &amp;, &lt; y &gt; ya escapados.
+const unX = (s) => String(s ?? "").replace(/&(amp|lt|gt);/g, (_, e) => ({ amp: "&", lt: "<", gt: ">" }[e]));
+
 function linkify(text) {
-  return esc(text).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${u.replace(/^https?:\/\//, "").slice(0, 40)}${u.length > 48 ? "…" : ""}</a>`);
+  return esc(unX(text)).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${u.replace(/^https?:\/\//, "").slice(0, 40)}${u.length > 48 ? "…" : ""}</a>`);
 }
 
 // ------------------------------------------------------------------ Markdown del lector
@@ -190,7 +192,8 @@ function renderMarkdown(src, title = "") {
     } else {
       flush();
       if (first && t === title.trim()) { first = false; continue; }
-      html.push(`<p>${mdInline(t)}</p>`);
+      // Párrafo que arranca en negrita («**Use the latest models.** Everything…»): la negrita hace de ladillo.
+      html.push(`<p${t.startsWith("**") ? ' class="lede"' : ""}>${mdInline(t)}</p>`);
     }
     first = false;
   }
@@ -200,18 +203,34 @@ function renderMarkdown(src, title = "") {
 
 function threadBlock(it) {
   if (!it.thread?.length) return "";
-  return `<div class="side-box"><h4>🧵 Hilo · ${it.thread.length} tuits</h4><ol class="thread">${it.thread.map((t) => `
+  return `<div class="o-thread"><h4>Hilo · ${it.thread.length} tuits</h4><ol class="thread">${it.thread.map((t) => `
     <li class="${t.id === it.id ? "current" : ""}">
       <div class="text">${linkify(t.text)}</div>
       ${t.media?.length ? `<div class="media-row">${t.media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : ""}
     </li>`).join("")}</ol></div>`;
 }
 
-// Hilo como texto continuo: una línea con un punto por tuit, e imágenes a todo el ancho.
+const mediaBig = (media) => media?.length
+  ? `<div class="media-row big">${media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : "";
+
+// Texto de un tuit en párrafos. En los tuits de un hilo se quita la numeración («3/») y,
+// si la primera línea es corta y va sola, pasa a subtítulo («Auto mode = no more permission prompts»).
+function tweetProse(text, inThread = false) {
+  let body = String(text || "").trim();
+  if (inThread) body = body.replace(/^\d{1,2}\s*[/.)]\s*(?=\S)/, "");
+  const [first, ...rest] = body.split(/\n\s*\n/);
+  const head = inThread && rest.length && first.length <= 90 && !first.includes("\n") && !/https?:\/\//.test(first) ? first : null;
+  return (head ? `<h3>${linkify(head)}</h3>` : "") +
+    (head ? rest : [first, ...rest]).filter((p) => p.trim()).map((p) => `<p>${linkify(p.trim())}</p>`).join("");
+}
+
+// Hilo como texto continuo: el primer tuit de entradilla y el resto numerados en el margen.
 function threadFlow(it) {
-  return `<ol class="rail">${it.thread.map((t) => `<li>
-    <div class="text">${linkify(t.text)}</div>
-    ${t.media?.length ? `<div class="media-row big">${t.media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : ""}</li>`).join("")}</ol>`;
+  const [lead, ...rest] = it.thread;
+  const n = it.thread.length;
+  return `<div class="lead">${tweetProse(lead.text)}</div>${mediaBig(lead.media)}
+    <ol class="thread-flow">${rest.map((t, i) => `<li><span class="num">${i + 2}/${n}</span>
+      <div class="prose">${tweetProse(t.text, true)}${mediaBig(t.media)}</div></li>`).join("")}</ol>`;
 }
 
 // Autor en la línea superior de la tarjeta: avatar pequeño y @usuario; al pulsarlo filtra por autor.
@@ -253,7 +272,7 @@ function card(it, i) {
         <span class="actions">
           <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">${icon("star")}</button>
           <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">${icon("check")}</button>
-          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon("brush")}</button>` : ""}
+          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon(xIcon(it))}</button>` : ""}
           ${fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X">${icon("x")}</button>`}
         </span>
       </div>
@@ -281,73 +300,133 @@ async function patch(it, data) {
 
 // ------------------------------------------------------------------ lector
 
+// Los títulos de las webs suelen acabar en « / Nombre del sitio», que ya sale encima.
+function cleanTitle(title, site) {
+  const t = String(title || "");
+  const sep = site && [" / ", " | ", " - ", " — ", " – "].find((x) => t.endsWith(x + site));
+  return sep ? t.slice(0, -(sep.length + site.length)) : t;
+}
+
+// Quita del principio del texto lo que ya está arriba: la sección («Engineering»), el título y la entradilla.
+function trimLead(md, ...seen) {
+  const norm = (x) => plainMd(x).replace(/[*_#]/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+  const known = seen.filter(Boolean).map(norm);
+  const lines = String(md || "").split("\n");
+  let cut = 0;
+  for (let i = 0, n = 0; i < lines.length && n < 4; i++) {
+    const t = norm(lines[i]);
+    if (!t) continue;
+    n++;
+    if (known.includes(t)) cut = i + 1;
+    else if (t.length >= 40) break;
+  }
+  return lines.slice(cut).join("\n");
+}
+
 async function openItem(it) {
   const full = await api(`/api/items/${it.id}`);
-  state.open = full;
   const d = $("#drawer");
+  // Al volver a pintar el mismo elemento (favorito, etiqueta…) no se pierde por dónde ibas leyendo.
+  const same = state.open?.id === full.id && d.classList.contains("open");
+  const keep = same ? [$(".content", d).scrollTop, $(".side", d).scrollTop] : [0, 0];
+  state.open = full;
   const mins = readMins(full.article_words);
-  const paras = renderMarkdown(full.article_text, full.article_title || "");
+  const title = cleanTitle(full.article_title, full.article_site);
+  const paras = renderMarkdown(trimLead(full.article_text, full.article_title, title, full.article_excerpt), title);
   const isArticle = full.article_status === "ok";
+  const fromX = isXDomain(full.domain) || /^(x|twitter)$/i.test(full.article_site || "");
   const threadMins = readMins((full.thread || []).reduce((n, t) => n + t.text.split(/\s+/).length, 0));
   const sources = full.sources.map((x) => SOURCE_LABEL[x] || x).join(" + ");
-  const keepQuoted = full.quoted && !full.archived ? `<p class="small"><button class="btn ghost small" data-d="keep-quoted"
-    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : "";
+  const ext = (href, label) => `<a class="ext" href="${esc(href)}" target="_blank" rel="noopener">${label} ${icon("external")}</a>`;
+  const abtn = (k, on, ic, label, onLabel, title) =>
+    `<button class="btn act-${k} ${on ? "on" : ""}" data-d="${k}" title="${title}" aria-pressed="${!!on}">${icon(ic)}<span>${on ? onLabel : label}</span></button>`;
+  // La entradilla sólo si no es el principio del propio texto (en los Artículos de X lo es).
+  const flat = (s) => plainMd(s).replace(/\s+/g, " ").trim();
+  const dek = full.article_excerpt && !flat(full.article_text).slice(0, 400).includes(flat(full.article_excerpt).slice(0, 50)) ? full.article_excerpt : "";
+  const keepQuoted = full.quoted && !full.archived ? `<button class="btn small" data-d="keep-quoted"
+    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button>` : "";
+  const who = `<b>${esc(full.author_name || (full.author_handle ? "@" + full.author_handle : "Tuit"))}</b>`;
+  const handle = full.author_handle ? `<button class="link" data-author="${esc(full.author_handle)}" title="Filtrar por @${esc(full.author_handle)}">@${esc(full.author_handle)}</button> · ` : "";
+  const saved = full.imported_at ? fmtDate(new Date(full.imported_at.replace(" ", "T") + "Z")) : "";
+
   d.innerHTML = `
-    <div class="head">
-      <button class="act fav ${full.favorite ? "on" : ""}" data-d="favorite" title="${full.favorite ? "Quitar de favoritos" : "Favorito"}">${icon("star")}</button>
-      <button class="act ${full.is_read ? "on" : ""}" data-d="is_read" title="${full.is_read ? "Marcar como no leído" : "Marcar leído"}">${icon("check")}</button>
-      <button class="act ${full.archived ? "on" : ""}" data-d="archived" title="${full.archived ? "Desarchivar" : "Archivar"}">${icon("archive")}</button>
-      ${inX(full) ? `<button class="act ${full.x_status === "remove" ? "on" : ""}" data-d="x_status" title="${full.x_status === "remove" ? "Se quitará de X con el script de limpieza" : "Quitar de X"} (x)">${icon("brush")}</button>` : ""}
-      <span class="spacer"></span>
-      <button class="act" data-d="close" title="Cerrar (Esc)">${icon("close")}</button>
-    </div>
-    <div class="content">
-      ${full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
+    <div class="content" tabindex="-1">
+      <button class="tbtn icon m-close" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
+      <article class="page">
       ${isArticle ? `
-        <div class="site muted small"><img src="${favicon(full.domain)}" width="14" alt=""> ${esc(full.article_site || full.domain)}</div>
-        <h1>${esc(full.article_title)}</h1>
-        <div class="byline">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date)), mins && `${mins} min de lectura`].filter(Boolean).map(esc).join(" · ")}
-          ${full.article_url ? ` · <a href="${esc(full.article_url)}" target="_blank" rel="noopener">Original ↗</a>` : ""}</div>
-      <div class="side-box"><h4>El tuit · ${fmtDate(tweetDate(full.id))} · ${sources}</h4>
-        ${tweetBlock(full, false)}
-        ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="">`).join("")}</div>` : ""}
-        ${quoteBlock(full.quoted)}
-        ${keepQuoted}
-      </div>
-      ${threadBlock(full)}` : `
-      <div class="site">
-        <a class="src-x" href="${esc(full.tweet_url)}" target="_blank" rel="noopener" title="Abrir en X">${icon("x")}</a>
-        <span>${full.thread?.length ? `Hilo de ${full.thread.length} tuits · ` : ""}${esc(fmtDate(tweetDate(full.id)))}</span>${threadMins ? `<span class="dot">·</span><span>${threadMins} min</span>` : `<span class="dot">·</span><span>${sources}</span>`}${byline(full)}
-      </div>
-      ${full.author_name ? `<div class="name">${esc(full.author_name)}</div>` : ""}
-      ${full.thread?.length ? threadFlow(full) : `<div class="text">${linkify(full.tweet_text)}</div>
-        ${full.media.length ? `<div class="media-row big">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}`}
-      ${quoteBlock(full.quoted)}
-      ${keepQuoted}`}
-      ${full.quoted_by?.length ? `<div class="sec"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
-
-      <div class="sec"><h4>Mis notas <span class="save-state" id="saveState"></span></h4>
-        <textarea id="note" placeholder="¿Por qué lo guardaste? ¿Qué te llevas?">${esc(full.note)}</textarea>
-      </div>
-
-      <div class="sec"><h4>Etiquetas</h4>
-        <div class="tag-editor" id="tagEditor">${full.tags.map((t) => `<span class="chip">#${esc(t)}<span class="x" data-rm="${esc(t)}">✕</span></span>`).join("")}
-          <input id="tagInput" placeholder="añadir etiqueta y Enter" list="tagSuggest"></div>
-        <datalist id="tagSuggest">${(state.stats?.tags || []).map((t) => `<option value="${esc(t.tag)}">`).join("")}</datalist>
-      </div>
-
-      ${full.article_status === "failed" ? `<p class="status-fail small">No pude extraer el artículo: ${esc(full.article_error)}</p>` : ""}
-      ${full.article_status === "pending" ? `<p class="muted">⏳ Extrayendo el artículo…</p>` : ""}
+        ${full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
+        <p class="kicker">${fromX ? icon("x") : `<img src="${favicon(full.domain)}" alt="" onerror="this.remove()">`}<b>${esc(fromX ? "Artículo de X" : full.article_site || full.domain)}</b>${mins ? `<span>·</span><span>${mins} min de lectura</span>` : ""}</p>
+        <h1>${esc(title)}</h1>
+        ${dek ? `<p class="dek">${esc(dek)}</p>` : ""}
+        <div class="meta">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date))]
+          .filter(Boolean).map((s) => `<span>${esc(s)}</span>`).join(`<span class="dot">·</span>`)}
+          ${full.article_url && !fromX ? ext(full.article_url, "Leer en la web") : ""}</div>` : `
+        <p class="kicker">${icon("x")}<b>${full.thread?.length ? `Hilo · ${full.thread.length} tuits` : "Tuit"}</b>${threadMins ? `<span>·</span><span>${threadMins} min</span>` : ""}</p>
+        <div class="author">
+          ${avatar(full)}
+          <div class="a-who">${who}<span>${handle}${esc(fmtDate(tweetDate(full.id)))}</span></div>
+        </div>
+        ${full.thread?.length ? threadFlow(full) : `<div class="lead ${full.tweet_text.length > 280 ? "long" : ""}">${tweetProse(full.tweet_text)}</div>${mediaBig(full.media)}`}
+        ${quoteBlock(full.quoted)}`}
+      ${full.article_status === "failed" ? `<p class="notice fail">No pude extraer el artículo: ${esc(full.article_error)}</p>` : ""}
+      ${full.article_status === "pending" ? `<p class="notice">⏳ Extrayendo el artículo…</p>` : ""}
       ${paras ? `<div class="article">${paras}</div>` : ""}
+      ${full.quoted_by?.length ? `<div class="cited"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
+      </article>
+    </div>
 
-      <div class="foot">
-        ${full.urls.length ? `<button data-d="refetch">↻ Volver a extraer</button>` : ""}
-        <button class="danger" data-d="delete">Eliminar</button>
+    <aside class="side">
+      <div class="side-head">
+        <span>${saved ? `Guardado el ${esc(saved)}` : esc(sources)}</span>
+        <button class="tbtn icon" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
       </div>
-    </div>`;
+      <div class="side-body">
+        <div class="acts">
+          ${abtn("favorite", full.favorite, "star", "Favorito", "En favoritos", "Favorito (f)")}
+          ${abtn("is_read", full.is_read, "check", "Marcar leído", "Leído", full.is_read ? "Marcar como no leído (r)" : "Marcar leído (r)")}
+          ${abtn("archived", full.archived, "archive", "Archivar", "Archivado", full.archived ? "Desarchivar (e)" : "Archivar (e)")}
+          ${inX(full) ? abtn("x_status", full.x_status === "remove", xIcon(full), "Quitar de X", "Se quitará de X",
+            full.x_status === "remove" ? "Se quitará de tus " + (xIcon(full) === "bookmarkOff" ? "guardados" : "me gusta") + " de X con el script de limpieza (x)" : "Marcar para quitar de X (x)") : ""}
+        </div>
+
+        <section>
+          <h3>${isArticle ? "El tuit" : "En X"}</h3>
+          <div class="origin">
+            ${isArticle ? `<div class="o-who">${avatar(full)}<div class="o-name">${who}<span>${handle}${fmtDate(tweetDate(full.id))}</span></div></div>
+            <div class="o-text">${linkify(full.tweet_text)}</div>
+            ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}
+            ${quoteBlock(full.quoted)}
+            ${threadBlock(full)}` : `<div class="o-text">${esc(sources[0].toUpperCase() + sources.slice(1))}${full.x_status === "removed" ? " · ya quitado de X" : ""}</div>`}
+            <p class="o-foot">${ext(full.tweet_url, "Ver en X")}${keepQuoted}</p>
+          </div>
+        </section>
+
+        <section>
+          <label for="note">Mis notas <span class="save-state" id="saveState"></span></label>
+          <textarea id="note" placeholder="¿Por qué lo guardaste? ¿Qué te llevas?">${esc(full.note)}</textarea>
+        </section>
+
+        <section>
+          <label for="tagInput">Etiquetas</label>
+          ${full.tags.length ? `<div class="tags">${full.tags.map((t) => `<span class="tag">${esc(t)}<button data-rm="${esc(t)}" aria-label="Quitar la etiqueta ${esc(t)}">${icon("close")}</button></span>`).join("")}</div>` : ""}
+          <input id="tagInput" placeholder="Añadir etiqueta…" list="tagSuggest">
+          <datalist id="tagSuggest">${(state.stats?.tags || []).map((t) => `<option value="${esc(t.tag)}">`).join("")}</datalist>
+        </section>
+
+        <div class="foot">
+          ${full.urls.length ? `<button class="btn" data-d="refetch">${icon("refresh")} Volver a extraer el artículo</button>` : ""}
+          <button class="btn danger" data-d="delete">${icon("trash")} Eliminar de la estantería</button>
+        </div>
+      </div>
+    </aside>`;
+  const wasOpen = d.classList.contains("open");
   d.classList.add("open");
-  d.scrollTop = 0;
+  d.setAttribute("aria-hidden", "false");
+  document.documentElement.classList.add("reading");
   $("#scrim").classList.remove("hidden");
+  const content = $(".content", d);
+  [content.scrollTop, $(".side", d).scrollTop] = keep;
+  if (!wasOpen || !same) content.focus({ preventScroll: true });
 
   let t;
   $("#note").addEventListener("input", (e) => {
@@ -358,13 +437,17 @@ async function openItem(it) {
   $("#tagInput").addEventListener("keydown", async (e) => {
     if (e.key === "Enter" && e.target.value.trim()) {
       await patch(full, { tags: [...full.tags, e.target.value.trim()] });
-      syncItem(full); openItem(full); loadStats();
+      syncItem(full); await openItem(full); loadStats();
+      $("#tagInput").focus();
     }
   });
 }
 
 function closeDrawer() {
-  $("#drawer").classList.remove("open");
+  const d = $("#drawer");
+  d.classList.remove("open");
+  d.setAttribute("aria-hidden", "true");
+  document.documentElement.classList.remove("reading");
   $("#scrim").classList.add("hidden");
   state.open = null;
 }
@@ -611,7 +694,7 @@ document.addEventListener("keydown", async (e) => {
   if (e.key === "x" && inX(it)) {
     await toggleXRemove(it); syncItem(it);
     if (state.open) openItem(it);
-    return toast(it.x_status === "remove" ? "🧹 Se quitará de X" : "Ya no se quitará de X");
+    return toast(it.x_status === "remove" ? "Se quitará de X" : "Ya no se quitará de X");
   }
   const field = { f: "favorite", r: "is_read", e: "archived" }[e.key];
   if (field) {
@@ -632,7 +715,7 @@ let cleanIds = [];
 function openClean() {
   const x = state.stats?.x || { marked: 0, bookmarks: 0, likes: 0 };
   $("#cleanCounts").innerHTML = [
-    ["marked", `Sólo los que he marcado con 🧹 (${x.marked})`, x.marked],
+    ["marked", `Sólo los que he marcado para quitar de X (${x.marked})`, x.marked],
     ["bookmarks", `Todos los guardados que ya están aquí (${x.bookmarks})`, x.bookmarks],
     ["likes", `Todos los me gusta que ya están aquí (${x.likes})`, x.likes],
   ].map(([k, label, n], i) => `<label class="radio"><input type="radio" name="cleanScope" value="${k}" ${i === 0 ? "checked" : ""} ${n ? "" : "disabled"}> ${label}</label>`).join("");

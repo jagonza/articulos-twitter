@@ -19,7 +19,8 @@ const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
 const ICONS = {
   star: '<path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/>',
   check: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/>',
-  brush: '<path d="M3 21v-4a4 4 0 1 1 4 4h-4"/><path d="M21 3a16 16 0 0 0 -12.8 10.2"/><path d="M21 3a16 16 0 0 1 -10.2 12.8"/><path d="M10.6 9a9 9 0 0 1 4.4 4.4"/>',
+  bookmarkOff: '<path d="M3 3l18 18"/><path d="M17 17v3l-5 -3l-5 3v-13m1.178 -2.818c.252 -.113 .53 -.176 .822 -.176h6a2 2 0 0 1 2 2v7"/>',
+  heartOff: '<path d="M3 3l18 18"/><path d="M19.5 12.572l-1.5 1.428m-2 2l-4 4l-7.5 -7.428a5 5 0 0 1 -1.288 -5.068a4.976 4.976 0 0 1 1.788 -2.504m3 -1c1.56 0 3.05 .727 4 2a5 5 0 0 1 7.5 6.572"/>',
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   archive: '<path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><path d="M10 12h4"/>',
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
@@ -44,6 +45,8 @@ const VIEWS = [
 const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado" };
 // Se puede quitar de X lo que llegó como guardado o me gusta y no se ha quitado ya.
 const inX = (it) => it.x_status !== "removed" && it.sources.some((s) => s === "like" || s === "bookmark");
+// Quitar de X es quitarlo de guardados o, si sólo llegó como me gusta, quitar el me gusta.
+const xIcon = (it) => (it.sources.includes("bookmark") ? "bookmarkOff" : "heartOff");
 
 const state = { view: "all", q: "", tag: "", domain: "", author: "", sort: "recent", items: [], total: 0, focus: -1, open: null };
 
@@ -269,7 +272,7 @@ function card(it, i) {
         <span class="actions">
           <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">${icon("star")}</button>
           <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">${icon("check")}</button>
-          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon("brush")}</button>` : ""}
+          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon(xIcon(it))}</button>` : ""}
           ${fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X">${icon("x")}</button>`}
         </span>
       </div>
@@ -324,7 +327,8 @@ async function openItem(it) {
   const full = await api(`/api/items/${it.id}`);
   const d = $("#drawer");
   // Al volver a pintar el mismo elemento (favorito, etiqueta…) no se pierde por dónde ibas leyendo.
-  const keep = state.open?.id === full.id && d.classList.contains("open") ? $(".content", d)?.scrollTop || 0 : 0;
+  const same = state.open?.id === full.id && d.classList.contains("open");
+  const keep = same ? [$(".content", d).scrollTop, $(".side", d).scrollTop] : [0, 0];
   state.open = full;
   const mins = readMins(full.article_words);
   const title = cleanTitle(full.article_title, full.article_site);
@@ -333,89 +337,96 @@ async function openItem(it) {
   const fromX = isXDomain(full.domain) || /^(x|twitter)$/i.test(full.article_site || "");
   const threadMins = readMins((full.thread || []).reduce((n, t) => n + t.text.split(/\s+/).length, 0));
   const sources = full.sources.map((x) => SOURCE_LABEL[x] || x).join(" + ");
-  const site = isArticle ? (fromX ? "Artículo de X" : full.article_site || full.domain) : full.thread?.length ? `Hilo · ${full.thread.length} tuits` : "Tuit";
-  const headMins = isArticle ? mins : threadMins;
   const ext = (href, label) => `<a class="ext" href="${esc(href)}" target="_blank" rel="noopener">${label} ${icon("external")}</a>`;
-  const tbtn = (k, on, label, onLabel, ic, title) =>
-    `<button class="tbtn ${k} ${on ? "on" : ""}" data-d="${k}" title="${title}" aria-pressed="${!!on}">${icon(ic)}<span class="lbl">${on ? onLabel : label}</span></button>`;
-  const ibtn = (k, on, ic, title) =>
-    `<button class="tbtn icon ${on ? "on" : ""}" data-d="${k}" title="${title}" aria-label="${title}" aria-pressed="${!!on}">${icon(ic)}</button>`;
+  const abtn = (k, on, ic, label, onLabel, title) =>
+    `<button class="btn act-${k} ${on ? "on" : ""}" data-d="${k}" title="${title}" aria-pressed="${!!on}">${icon(ic)}<span>${on ? onLabel : label}</span></button>`;
   // La entradilla sólo si no es el principio del propio texto (en los Artículos de X lo es).
   const flat = (s) => plainMd(s).replace(/\s+/g, " ").trim();
   const dek = full.article_excerpt && !flat(full.article_text).slice(0, 400).includes(flat(full.article_excerpt).slice(0, 50)) ? full.article_excerpt : "";
-  const keepQuoted = full.quoted && !full.archived ? `<p><button class="btn small" data-d="keep-quoted"
-    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : "";
+  const keepQuoted = full.quoted && !full.archived ? `<button class="btn small" data-d="keep-quoted"
+    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button>` : "";
   const who = `<b>${esc(full.author_name || (full.author_handle ? "@" + full.author_handle : "Tuit"))}</b>`;
+  const handle = full.author_handle ? `<button class="link" data-author="${esc(full.author_handle)}" title="Filtrar por @${esc(full.author_handle)}">@${esc(full.author_handle)}</button> · ` : "";
   const saved = full.imported_at ? fmtDate(new Date(full.imported_at.replace(" ", "T") + "Z")) : "";
 
   d.innerHTML = `
-    <header class="head">
-      <div class="where">${isArticle && !fromX ? `<img src="${favicon(full.domain)}" alt="">` : icon("x")}<b>${esc(site)}</b>${headMins ? `<span>·</span><span>${headMins} min</span>` : ""}</div>
-      ${tbtn("favorite", full.favorite, "Favorito", "En favoritos", "star", "Favorito (f)")}
-      ${tbtn("is_read", full.is_read, "Marcar leído", "Leído", "check", full.is_read ? "Marcar como no leído (r)" : "Marcar leído (r)")}
-      ${ibtn("archived", full.archived, "archive", full.archived ? "Desarchivar (e)" : "Archivar (e)")}
-      ${inX(full) ? ibtn("x_status", full.x_status === "remove", "brush", full.x_status === "remove" ? "Se quitará de X con el script de limpieza (x)" : "Quitar de X (x)") : ""}
-      <span class="sep"></span>
-      <button class="tbtn icon" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
-    </header>
     <div class="content" tabindex="-1">
+      <button class="tbtn icon m-close" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
       <article class="page">
       ${isArticle ? `
         ${full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
-        <p class="kicker">${esc(fromX ? "Artículo de X" : full.article_site || full.domain)}</p>
+        <p class="kicker">${fromX ? icon("x") : `<img src="${favicon(full.domain)}" alt="" onerror="this.remove()">`}<b>${esc(fromX ? "Artículo de X" : full.article_site || full.domain)}</b>${mins ? `<span>·</span><span>${mins} min de lectura</span>` : ""}</p>
         <h1>${esc(title)}</h1>
         ${dek ? `<p class="dek">${esc(dek)}</p>` : ""}
-        <div class="meta">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date)), mins && `${mins} min de lectura`]
+        <div class="meta">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date))]
           .filter(Boolean).map((s) => `<span>${esc(s)}</span>`).join(`<span class="dot">·</span>`)}
-          ${full.article_url && !fromX ? ext(full.article_url, "Leer en la web") : ""}</div>
-        <div class="origin">
-          ${avatar(full)}
-          <div class="o-body">
-            <div class="o-who">${who}<span>${full.author_handle ? `@${esc(full.author_handle)} · ` : ""}${esc(sources)} · ${fmtDate(tweetDate(full.id))}</span>${ext(full.tweet_url, "Ver en X")}</div>
-            <div class="o-text">${linkify(full.tweet_text)}</div>
-            ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}
-            ${quoteBlock(full.quoted)}
-            ${keepQuoted}
-            ${threadBlock(full)}
-          </div>
-        </div>` : `
+          ${full.article_url && !fromX ? ext(full.article_url, "Leer en la web") : ""}</div>` : `
+        <p class="kicker">${icon("x")}<b>${full.thread?.length ? `Hilo · ${full.thread.length} tuits` : "Tuit"}</b>${threadMins ? `<span>·</span><span>${threadMins} min</span>` : ""}</p>
         <div class="author">
           ${avatar(full)}
-          <div class="a-who">${who}<span>${full.author_handle ? `<button class="link" data-author="${esc(full.author_handle)}" title="Filtrar por @${esc(full.author_handle)}">@${esc(full.author_handle)}</button> · ` : ""}${esc(fmtDate(tweetDate(full.id)))}</span></div>
-          ${ext(full.tweet_url, "Ver en X")}
+          <div class="a-who">${who}<span>${handle}${esc(fmtDate(tweetDate(full.id)))}</span></div>
         </div>
         ${full.thread?.length ? threadFlow(full) : `<div class="lead ${full.tweet_text.length > 280 ? "long" : ""}">${tweetProse(full.tweet_text)}</div>${mediaBig(full.media)}`}
-        ${quoteBlock(full.quoted)}
-        ${keepQuoted}`}
+        ${quoteBlock(full.quoted)}`}
       ${full.article_status === "failed" ? `<p class="notice fail">No pude extraer el artículo: ${esc(full.article_error)}</p>` : ""}
       ${full.article_status === "pending" ? `<p class="notice">⏳ Extrayendo el artículo…</p>` : ""}
       ${paras ? `<div class="article">${paras}</div>` : ""}
       ${full.quoted_by?.length ? `<div class="cited"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
       </article>
+    </div>
 
-      <footer class="ficha">
-        <h2>Tu ficha</h2>
-        <label for="note">Notas <span class="save-state" id="saveState"></span></label>
-        <textarea id="note" placeholder="¿Por qué lo guardaste? ¿Qué te llevas?">${esc(full.note)}</textarea>
-        <label for="tagInput">Etiquetas</label>
-        <div class="tag-editor" id="tagEditor">${full.tags.map((t) => `<span class="tag">${esc(t)}<button data-rm="${esc(t)}" aria-label="Quitar la etiqueta ${esc(t)}">${icon("close")}</button></span>`).join("")}
-          <input id="tagInput" placeholder="Añadir etiqueta…" list="tagSuggest"></div>
-        <datalist id="tagSuggest">${(state.stats?.tags || []).map((t) => `<option value="${esc(t.tag)}">`).join("")}</datalist>
-        <div class="foot">
-          ${full.urls.length ? `<button class="btn" data-d="refetch">${icon("refresh")} Volver a extraer</button>` : ""}
-          <span class="saved">${saved ? `Guardado el ${esc(saved)}` : ""}</span>
-          <button class="btn danger" data-d="delete">${icon("trash")} Eliminar</button>
+    <aside class="side">
+      <div class="side-head">
+        <span>${saved ? `Guardado el ${esc(saved)}` : esc(sources)}</span>
+        <button class="tbtn icon" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
+      </div>
+      <div class="side-body">
+        <div class="acts">
+          ${abtn("favorite", full.favorite, "star", "Favorito", "En favoritos", "Favorito (f)")}
+          ${abtn("is_read", full.is_read, "check", "Marcar leído", "Leído", full.is_read ? "Marcar como no leído (r)" : "Marcar leído (r)")}
+          ${abtn("archived", full.archived, "archive", "Archivar", "Archivado", full.archived ? "Desarchivar (e)" : "Archivar (e)")}
+          ${inX(full) ? abtn("x_status", full.x_status === "remove", xIcon(full), "Quitar de X", "Se quitará de X",
+            full.x_status === "remove" ? "Se quitará de tus " + (xIcon(full) === "bookmarkOff" ? "guardados" : "me gusta") + " de X con el script de limpieza (x)" : "Marcar para quitar de X (x)") : ""}
         </div>
-      </footer>
-    </div>`;
+
+        <section>
+          <h3>${isArticle ? "El tuit" : "En X"}</h3>
+          <div class="origin">
+            ${isArticle ? `<div class="o-who">${avatar(full)}<div class="o-name">${who}<span>${handle}${fmtDate(tweetDate(full.id))}</span></div></div>
+            <div class="o-text">${linkify(full.tweet_text)}</div>
+            ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}
+            ${quoteBlock(full.quoted)}
+            ${threadBlock(full)}` : `<div class="o-text">${esc(sources[0].toUpperCase() + sources.slice(1))}${full.x_status === "removed" ? " · ya quitado de X" : ""}</div>`}
+            <p class="o-foot">${ext(full.tweet_url, "Ver en X")}${keepQuoted}</p>
+          </div>
+        </section>
+
+        <section>
+          <label for="note">Mis notas <span class="save-state" id="saveState"></span></label>
+          <textarea id="note" placeholder="¿Por qué lo guardaste? ¿Qué te llevas?">${esc(full.note)}</textarea>
+        </section>
+
+        <section>
+          <label for="tagInput">Etiquetas</label>
+          ${full.tags.length ? `<div class="tags">${full.tags.map((t) => `<span class="tag">${esc(t)}<button data-rm="${esc(t)}" aria-label="Quitar la etiqueta ${esc(t)}">${icon("close")}</button></span>`).join("")}</div>` : ""}
+          <input id="tagInput" placeholder="Añadir etiqueta…" list="tagSuggest">
+          <datalist id="tagSuggest">${(state.stats?.tags || []).map((t) => `<option value="${esc(t.tag)}">`).join("")}</datalist>
+        </section>
+
+        <div class="foot">
+          ${full.urls.length ? `<button class="btn" data-d="refetch">${icon("refresh")} Volver a extraer el artículo</button>` : ""}
+          <button class="btn danger" data-d="delete">${icon("trash")} Eliminar de la estantería</button>
+        </div>
+      </div>
+    </aside>`;
   const wasOpen = d.classList.contains("open");
   d.classList.add("open");
   d.setAttribute("aria-hidden", "false");
   document.documentElement.classList.add("reading");
   $("#scrim").classList.remove("hidden");
   const content = $(".content", d);
-  content.scrollTop = keep;
-  if (!wasOpen || !keep) content.focus({ preventScroll: true });
+  [content.scrollTop, $(".side", d).scrollTop] = keep;
+  if (!wasOpen || !same) content.focus({ preventScroll: true });
 
   let t;
   $("#note").addEventListener("input", (e) => {
@@ -683,7 +694,7 @@ document.addEventListener("keydown", async (e) => {
   if (e.key === "x" && inX(it)) {
     await toggleXRemove(it); syncItem(it);
     if (state.open) openItem(it);
-    return toast(it.x_status === "remove" ? "🧹 Se quitará de X" : "Ya no se quitará de X");
+    return toast(it.x_status === "remove" ? "Se quitará de X" : "Ya no se quitará de X");
   }
   const field = { f: "favorite", r: "is_read", e: "archived" }[e.key];
   if (field) {
@@ -704,7 +715,7 @@ let cleanIds = [];
 function openClean() {
   const x = state.stats?.x || { marked: 0, bookmarks: 0, likes: 0 };
   $("#cleanCounts").innerHTML = [
-    ["marked", `Sólo los que he marcado con 🧹 (${x.marked})`, x.marked],
+    ["marked", `Sólo los que he marcado para quitar de X (${x.marked})`, x.marked],
     ["bookmarks", `Todos los guardados que ya están aquí (${x.bookmarks})`, x.bookmarks],
     ["likes", `Todos los me gusta que ya están aquí (${x.likes})`, x.likes],
   ].map(([k, label, n], i) => `<label class="radio"><input type="radio" name="cleanScope" value="${k}" ${i === 0 ? "checked" : ""} ${n ? "" : "disabled"}> ${label}</label>`).join("");

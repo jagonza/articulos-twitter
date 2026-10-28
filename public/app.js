@@ -364,6 +364,34 @@ function card(it, i) {
   return state.layout === "list" ? cardRow(it, i) : cardTile(it, i);
 }
 
+// Las tarjetas se reparten en columnas con JS: cada una va a la más corta, así
+// ninguna empieza a mitad de otra y no hay huecos. Las columnas CSS se cortaban en Safari.
+const CARD_MIN = 300, GRID_GAP = 18;
+let cardNodes = [];
+let gridCols = 0;
+
+function placeCards(force) {
+  const grid = $("#grid");
+  if (state.layout === "list") {
+    gridCols = 0;
+    grid.replaceChildren(...cardNodes);
+    return;
+  }
+  const cols = Math.max(1, Math.floor((grid.clientWidth + GRID_GAP) / (CARD_MIN + GRID_GAP)));
+  if (cols === gridCols && !force) return;
+  gridCols = cols;
+  const columns = Array.from({ length: cols }, () => Object.assign(document.createElement("div"), { className: "col" }));
+  grid.replaceChildren(...columns);
+  const heights = columns.map(() => 0);
+  for (const node of cardNodes) {
+    const i = heights.indexOf(Math.min(...heights));
+    columns[i].append(node);
+    heights[i] = columns[i].offsetHeight;
+  }
+}
+
+window.addEventListener("resize", () => placeCards());
+
 function renderGrid() {
   $("#grid").classList.toggle("list", state.layout === "list");
   document.querySelectorAll("[data-layout]").forEach((b) => {
@@ -372,6 +400,8 @@ function renderGrid() {
     b.setAttribute("aria-pressed", on);
   });
   $("#grid").innerHTML = state.items.map(card).join("");
+  cardNodes = [...$("#grid").children];
+  placeCards(true);
   const filters = [
     state.q && ["q", `🔎 “${state.q}”`], state.tag && ["tag", `#${state.tag}`],
     state.domain && ["domain", state.domain], state.author && ["author", `@${state.author}`],

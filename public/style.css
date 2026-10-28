@@ -111,11 +111,11 @@ select, .btn, .icon-btn {
 .summary { margin: 6px 0 14px; font-size: 13px; }
 
 /* --- tarjetas --- */
-/* Columnas repartidas: cada columna empieza arriba del todo y la separación
-   entre tarjetas es sólo el margen de abajo, sin huecos por filas. */
-.grid { columns: 300px auto; column-gap: 18px; }
+/* Columnas que reparte app.js (placeCards): cada una arranca arriba del todo. */
+.grid { display: flex; align-items: flex-start; gap: 18px; }
+.grid .col { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; gap: 18px; }
 .card {
-  break-inside: avoid; margin: 0 0 18px; background: var(--panel); border: 1px solid var(--line);
+  margin: 0; background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; position: relative;
   transition: border-color .15s, box-shadow .15s;
 }
@@ -211,7 +211,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card .acts .act.fav.on { color: var(--star); }
 
 /* vista de lista: una fila por elemento, las acciones siempre a la vista */
-.grid.list { columns: auto; display: block; max-width: 940px; }
+.grid.list { display: block; max-width: 940px; }
 .card.row {
   display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: 18px; align-items: stretch;
   padding: 12px; border-radius: 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent;

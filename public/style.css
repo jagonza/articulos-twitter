@@ -111,9 +111,11 @@ select, .btn, .icon-btn {
 .summary { margin: 6px 0 14px; font-size: 13px; }
 
 /* --- tarjetas --- */
-.grid { columns: 320px; column-gap: 18px; }
+/* Cuadrícula normal: sin columnas repartidas, así no quedan huecos cuando la
+   primera tarjeta es alta o hay pocas tarjetas. */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 18px; align-items: start; }
 .card {
-  break-inside: avoid; margin-bottom: 18px; background: var(--panel); border: 1px solid var(--line);
+  margin: 0; background: var(--panel); border: 1px solid var(--line);
   border-radius: var(--radius); box-shadow: var(--shadow); cursor: pointer; position: relative;
   transition: border-color .15s, box-shadow .15s;
 }
@@ -209,7 +211,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card .acts .act.fav.on { color: var(--star); }
 
 /* vista de lista: una fila por elemento, las acciones siempre a la vista */
-.grid.list { columns: auto; max-width: 940px; }
+.grid.list { display: block; max-width: 940px; }
 .card.row {
   display: grid; grid-template-columns: 160px minmax(0, 1fr) auto; gap: 18px; align-items: stretch;
   padding: 12px; border-radius: 12px; border: 0; border-bottom: 1px solid var(--line); background: transparent;

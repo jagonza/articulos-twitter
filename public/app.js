@@ -273,9 +273,9 @@ function origin(it, fromX) {
 }
 
 // Portada: la imagen del artículo, o un color de reserva con la inicial del sitio si no hay imagen o falla.
-function cover(it) {
-  const img = it.article_image ? `<img src="${esc(it.article_image)}" alt="" loading="lazy" onerror="this.remove()">` : "";
-  return `<div class="cover" style="--h:${hue(it.domain || it.id)}">${img}<span>${esc((it.article_site || it.domain || "?")[0].toUpperCase())}</span></div>`;
+function cover(it, src = it.article_image) {
+  const img = src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<div class="cover" style="--h:${hue(it.domain || it.id)}">${img}<span>${esc((it.article_site || it.domain || it.author_name || it.author_handle || "?")[0].toUpperCase())}</span></div>`;
 }
 
 const whenOf = (it) => {
@@ -349,7 +349,7 @@ function cardRow(it, i) {
     : hasArticle ? esc(excerpt)
     : q ? `↪ ${q.author_handle ? esc(`@${q.author_handle}: `) : ""}${esc(q.tweet_text)}` : "";
   return `<article class="card row ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
-    <div class="thumb">${hasArticle ? cover(it) : avatar(it)}</div>
+    <div class="thumb">${hasArticle ? cover(it) : cover(it, it.media[0] || it.author_avatar)}</div>
     <div class="mid">
       <div class="site">${origin(it, fromX)}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
       <div class="ttl">${esc(hasArticle ? title : unX(it.tweet_text))}</div>

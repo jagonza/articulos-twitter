@@ -218,7 +218,6 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 .card.row .thumb { display: grid; justify-items: start; align-items: center; }
 .card.row .cover { border-radius: 9px; }
 .card.row .cover { width: 112px; height: 76px; aspect-ratio: auto; font-size: 24px; }
-.card.row .avatar { width: 44px; height: 44px; font-size: 17px; }
 .card.row .mid { min-width: 0; }
 .card.row .site { margin-bottom: 4px; }
 .card.row .ttl { font: 600 17px/1.35 var(--ui); letter-spacing: -.01em; color: var(--strong); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -245,7 +244,6 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 @media (max-width: 700px) {
   .card.row { grid-template-columns: 72px minmax(0, 1fr) auto; gap: 12px; }
   .card.row .cover { width: 72px; height: 56px; font-size: 18px; }
-  .card.row .avatar { width: 40px; height: 40px; }
   .card.row .site .av { display: none; }
   .card.row .cover { width: 72px; height: 56px; }
   /* en el móvil la barra se parte en dos filas: botones arriba y búsqueda debajo */

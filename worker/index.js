@@ -69,6 +69,8 @@ const VIEWS = {
   tweets: "i.article_status IN ('none', 'failed') AND i.archived = 0",
   notes: "i.note != ''",
   archived: "i.archived = 1",
+  // Guardados o me gusta que siguen en X: ni quitados ni marcados para quitar.
+  x_keep: "i.x_status IS NULL AND (instr(i.sources, 'bookmark') > 0 OR instr(i.sources, 'like') > 0)",
   x_remove: "i.x_status = 'remove'",
 };
 // Columnas de la lista (sin el texto completo del artículo, que pesa).
@@ -293,6 +295,7 @@ async function stats(db) {
         SUM(article_status = 'ok' AND archived = 0) AS articles,
         SUM(article_status IN ('none', 'failed') AND archived = 0) AS tweets,
         SUM(note != '') AS notes, SUM(archived = 1) AS archived, SUM(x_status = 'remove') AS x_remove,
+        SUM(x_status IS NULL AND (instr(sources, 'bookmark') > 0 OR instr(sources, 'like') > 0)) AS x_keep,
         SUM(instr(sources, 'bookmark') > 0 AND x_status IS NOT 'removed') AS x_bookmarks,
         SUM(instr(sources, 'like') > 0 AND x_status IS NOT 'removed') AS x_likes,
         SUM(CASE WHEN is_read = 0 AND article_status = 'ok' THEN coalesce(article_words, 0) ELSE 0 END) AS words_unread,

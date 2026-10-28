@@ -42,7 +42,7 @@ const fmtDate = (d) => d && !isNaN(d) ? d.toLocaleDateString("es-ES", { day: "nu
 const VIEWS = [
   ["all", "📥", "Todo"], ["unread", "📖", "Por leer"], ["favorites", "⭐", "Favoritos"],
   ["articles", "📰", "Artículos"], ["tweets", "💬", "Sólo tuits"], ["notes", "📝", "Con notas"], ["archived", "🗄️", "Archivados"],
-  ["x_remove", "🧹", "Para quitar de X"],
+  ["x_keep", "👀", "Aún en X"], ["x_remove", "🧹", "Para quitar de X"],
 ];
 const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado" };
 // Se puede quitar de X lo que llegó como guardado o me gusta y no se ha quitado ya.

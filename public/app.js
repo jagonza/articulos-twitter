@@ -20,6 +20,8 @@ const ICONS = {
   star: '<path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/>',
   check: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/>',
   brush: '<path d="M3 21v-4a4 4 0 1 1 4 4h-4"/><path d="M21 3a16 16 0 0 0 -12.8 10.2"/><path d="M21 3a16 16 0 0 1 -10.2 12.8"/><path d="M10.6 9a9 9 0 0 1 4.4 4.4"/>',
+  close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
+  archive: '<path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><path d="M10 12h4"/>',
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
 };
 const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -205,6 +207,13 @@ function threadBlock(it) {
     </li>`).join("")}</ol></div>`;
 }
 
+// Hilo como texto continuo: una línea con un punto por tuit, e imágenes a todo el ancho.
+function threadFlow(it) {
+  return `<ol class="rail">${it.thread.map((t) => `<li>
+    <div class="text">${linkify(t.text)}</div>
+    ${t.media?.length ? `<div class="media-row big">${t.media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : ""}</li>`).join("")}</ol>`;
+}
+
 // Autor en la línea superior de la tarjeta: avatar pequeño y @usuario; al pulsarlo filtra por autor.
 function byline(it) {
   if (!it.author_handle) return "";
@@ -278,40 +287,50 @@ async function openItem(it) {
   const d = $("#drawer");
   const mins = readMins(full.article_words);
   const paras = renderMarkdown(full.article_text, full.article_title || "");
+  const isArticle = full.article_status === "ok";
+  const threadMins = readMins((full.thread || []).reduce((n, t) => n + t.text.split(/\s+/).length, 0));
+  const sources = full.sources.map((x) => SOURCE_LABEL[x] || x).join(" + ");
+  const keepQuoted = full.quoted && !full.archived ? `<p class="small"><button class="btn ghost small" data-d="keep-quoted"
+    title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : "";
   d.innerHTML = `
     <div class="head">
-      <button class="icon-btn" data-d="close" title="Cerrar (Esc)">✕</button>
-      <button class="btn ghost" data-d="favorite">${full.favorite ? "⭐ Favorito" : "☆ Favorito"}</button>
-      <button class="btn ghost" data-d="is_read">${full.is_read ? "✅ Leído" : "○ Marcar leído"}</button>
-      <button class="btn ghost" data-d="archived">${full.archived ? "📤 Desarchivar" : "🗄️ Archivar"}</button>
-      ${inX(full) ? `<button class="btn ghost" data-d="x_status" title="Lo quitará el script de limpieza (x)">${full.x_status === "remove" ? "🧹 Se quitará de X" : "🧹 Quitar de X"}</button>`
-        : full.x_status === "removed" ? `<span class="muted small">✓ Quitado de X</span>` : ""}
+      <button class="act fav ${full.favorite ? "on" : ""}" data-d="favorite" title="${full.favorite ? "Quitar de favoritos" : "Favorito"}">${icon("star")}</button>
+      <button class="act ${full.is_read ? "on" : ""}" data-d="is_read" title="${full.is_read ? "Marcar como no leído" : "Marcar leído"}">${icon("check")}</button>
+      <button class="act ${full.archived ? "on" : ""}" data-d="archived" title="${full.archived ? "Desarchivar" : "Archivar"}">${icon("archive")}</button>
+      ${inX(full) ? `<button class="act ${full.x_status === "remove" ? "on" : ""}" data-d="x_status" title="${full.x_status === "remove" ? "Se quitará de X con el script de limpieza" : "Quitar de X"} (x)">${icon("brush")}</button>` : ""}
       <span class="spacer"></span>
-      ${full.article_url ? `<a class="btn ghost" href="${esc(full.article_url)}" target="_blank" rel="noopener">Original ↗</a>` : ""}
-      <a class="btn ghost" href="${esc(full.tweet_url)}" target="_blank" rel="noopener">𝕏 ↗</a>
+      <button class="act" data-d="close" title="Cerrar (Esc)">${icon("close")}</button>
     </div>
     <div class="content">
       ${full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
-      ${full.article_status === "ok" ? `
+      ${isArticle ? `
         <div class="site muted small"><img src="${favicon(full.domain)}" width="14" alt=""> ${esc(full.article_site || full.domain)}</div>
         <h1>${esc(full.article_title)}</h1>
-        <div class="byline">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date)), mins && `${mins} min de lectura`].filter(Boolean).map(esc).join(" · ")}</div>` : `<h1>Tuit</h1>`}
-
-      <div class="side-box"><h4>El tuit · ${fmtDate(tweetDate(full.id))} · ${full.sources.map((s) => SOURCE_LABEL[s] || s).join(" + ")}</h4>
+        <div class="byline">${[full.article_author, full.article_date && fmtDate(new Date(full.article_date)), mins && `${mins} min de lectura`].filter(Boolean).map(esc).join(" · ")}
+          ${full.article_url ? ` · <a href="${esc(full.article_url)}" target="_blank" rel="noopener">Original ↗</a>` : ""}</div>
+      <div class="side-box"><h4>El tuit · ${fmtDate(tweetDate(full.id))} · ${sources}</h4>
         ${tweetBlock(full, false)}
         ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="">`).join("")}</div>` : ""}
         ${quoteBlock(full.quoted)}
-        ${full.quoted && !full.archived ? `<p class="small"><button class="btn ghost small" data-d="keep-quoted"
-          title="Pasa favorito, notas y etiquetas al citado y archiva este tuit">↪ Quedarme sólo con el citado</button></p>` : ""}
+        ${keepQuoted}
       </div>
-      ${threadBlock(full)}
-      ${full.quoted_by?.length ? `<div class="side-box"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
+      ${threadBlock(full)}` : `
+      <div class="site">
+        <a class="src-x" href="${esc(full.tweet_url)}" target="_blank" rel="noopener" title="Abrir en X">${icon("x")}</a>
+        <span>${full.thread?.length ? `Hilo de ${full.thread.length} tuits · ` : ""}${esc(fmtDate(tweetDate(full.id)))}</span>${threadMins ? `<span class="dot">·</span><span>${threadMins} min</span>` : `<span class="dot">·</span><span>${sources}</span>`}${byline(full)}
+      </div>
+      ${full.author_name ? `<div class="name">${esc(full.author_name)}</div>` : ""}
+      ${full.thread?.length ? threadFlow(full) : `<div class="text">${linkify(full.tweet_text)}</div>
+        ${full.media.length ? `<div class="media-row big">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}`}
+      ${quoteBlock(full.quoted)}
+      ${keepQuoted}`}
+      ${full.quoted_by?.length ? `<div class="sec"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
 
-      <div class="side-box"><h4>Mis notas <span class="save-state" id="saveState"></span></h4>
+      <div class="sec"><h4>Mis notas <span class="save-state" id="saveState"></span></h4>
         <textarea id="note" placeholder="¿Por qué lo guardaste? ¿Qué te llevas?">${esc(full.note)}</textarea>
       </div>
 
-      <div class="side-box"><h4>Etiquetas</h4>
+      <div class="sec"><h4>Etiquetas</h4>
         <div class="tag-editor" id="tagEditor">${full.tags.map((t) => `<span class="chip">#${esc(t)}<span class="x" data-rm="${esc(t)}">✕</span></span>`).join("")}
           <input id="tagInput" placeholder="añadir etiqueta y Enter" list="tagSuggest"></div>
         <datalist id="tagSuggest">${(state.stats?.tags || []).map((t) => `<option value="${esc(t.tag)}">`).join("")}</datalist>
@@ -321,10 +340,10 @@ async function openItem(it) {
       ${full.article_status === "pending" ? `<p class="muted">⏳ Extrayendo el artículo…</p>` : ""}
       ${paras ? `<div class="article">${paras}</div>` : ""}
 
-      <p class="small" style="margin-top:30px">
-        ${full.urls.length ? `<button class="btn ghost" data-d="refetch">↻ Volver a extraer</button>` : ""}
-        <button class="btn ghost danger" data-d="delete">Eliminar</button>
-      </p>
+      <div class="foot">
+        ${full.urls.length ? `<button data-d="refetch">↻ Volver a extraer</button>` : ""}
+        <button class="danger" data-d="delete">Eliminar</button>
+      </div>
     </div>`;
   d.classList.add("open");
   d.scrollTop = 0;
@@ -480,7 +499,7 @@ document.addEventListener("click", async (e) => {
   const dom = t.closest("[data-domain]");
   if (dom) { state.domain = state.domain === dom.dataset.domain ? "" : dom.dataset.domain; return refresh(); }
   const au = t.closest("[data-author]");
-  if (au) { state.author = state.author === au.dataset.author ? "" : au.dataset.author; return refresh(); }
+  if (au) { if (state.open) closeDrawer(); state.author = state.author === au.dataset.author ? "" : au.dataset.author; return refresh(); }
 
   const act = t.closest("[data-act]");
   if (act) {

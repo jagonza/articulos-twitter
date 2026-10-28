@@ -268,8 +268,8 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 html.reading { overflow: hidden; }
 .scrim { position: fixed; inset: 0; background: var(--scrim); z-index: 20; backdrop-filter: blur(3px); }
 .drawer {
-  position: fixed; z-index: 21; top: 24px; left: 50%; width: min(1200px, calc(100vw - 32px)); height: calc(100vh - 48px);
-  display: grid; grid-template-columns: minmax(0, 1fr) 360px; background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+  position: fixed; z-index: 21; top: 24px; left: 50%; width: min(1200px, calc(100vw - 32px)); height: calc(100vh - 48px); height: calc(100dvh - 48px);
+  display: grid; grid-template-columns: minmax(0, 1fr) 360px; grid-template-rows: minmax(0, 1fr); background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
   box-shadow: 0 40px 120px rgba(0, 0, 0, .45); overflow: hidden; font-family: var(--ui); color: var(--body);
   opacity: 0; visibility: hidden; transform: translate(-50%, 14px) scale(.985);
   transition: opacity .18s ease, transform .22s ease, visibility 0s .22s;

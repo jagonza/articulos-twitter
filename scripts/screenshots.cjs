@@ -1,6 +1,7 @@
 // Capturas de la app en local para comprobar cambios de interfaz. Necesita `npm run dev` en marcha.
 // Uso: node scripts/screenshots.cjs [carpeta]   (por defecto .wrangler/shots)
-// Saca la portada y el lector (un artículo y un hilo) en escritorio oscuro y en móvil claro.
+// Saca la portada y el lector (un artículo y un hilo) en escritorio oscuro y en móvil claro,
+// y la portada en vista de lista (escritorio-lista, movil-lista).
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
@@ -16,15 +17,25 @@ const password = (vars.match(/^APP_PASSWORD=(.*)$/m) || [])[1] || "cambia-esto";
   const proxy = process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY, bypass: "localhost,127.0.0.1" } : undefined;
   const browser = await chromium.launch({ proxy });
   const errors = [];
-  for (const [name, viewport, colorScheme] of [["escritorio", { width: 1440, height: 1000 }, "dark"], ["movil", { width: 390, height: 844 }, "light"]]) {
-    const page = await (await browser.newContext({ viewport, colorScheme })).newPage();
+  // La lista sólo se saca de la portada: el lector no cambia con la vista.
+  const passes = [
+    ["escritorio", { width: 1440, height: 1000 }, "dark", "cards"],
+    ["movil", { width: 390, height: 844 }, "light", "cards"],
+    ["escritorio-lista", { width: 1440, height: 1000 }, "dark", "list"],
+    ["movil-lista", { width: 390, height: 844 }, "light", "list"],
+  ];
+  for (const [name, viewport, colorScheme, layout] of passes) {
+    const context = await browser.newContext({ viewport, colorScheme });
+    await context.addInitScript((l) => { try { localStorage.setItem("layout", l); } catch {} }, layout);
+    const page = await context.newPage();
     page.on("pageerror", (e) => errors.push(`${name}: ${e.message}`));
     await page.request.post(`${BASE}/api/login`, { data: { password } });
     await page.goto(BASE);
     await page.waitForSelector(".card");
     await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(outDir, `${name}-portada.png`) });
-    for (const [kind, selector] of [["articulo", ".card:has(h2)"], ["hilo", ".card:has(.thread-badge)"]]) {
+    if (layout === "list") { await context.close(); continue; }
+    for (const [kind, selector] of [["articulo", ".card:has(h2)"], ["hilo", ".card:has-text(\"Hilo de\")"]]) {
       const card = page.locator(selector).first();
       if (!(await card.count())) continue;
       await card.click();

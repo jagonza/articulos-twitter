@@ -48,7 +48,9 @@ const inX = (it) => it.x_status !== "removed" && it.sources.some((s) => s === "l
 // Quitar de X es quitarlo de guardados o, si sólo llegó como me gusta, quitar el me gusta.
 const xIcon = (it) => (it.sources.includes("bookmark") ? "bookmarkOff" : "heartOff");
 
-const state = { view: "all", q: "", tag: "", domain: "", author: "", sort: "recent", items: [], total: 0, focus: -1, open: null };
+// Tarjetas o lista: la última que eligió la persona (si el navegador deja guardarla).
+const loadLayout = () => { try { return localStorage.getItem("layout") === "list" ? "list" : "cards"; } catch { return "cards"; } };
+const state = { view: "all", q: "", tag: "", domain: "", author: "", sort: "recent", layout: loadLayout(), items: [], total: 0, focus: -1, open: null };
 
 // ------------------------------------------------------------------ carga
 
@@ -90,8 +92,16 @@ function avatar(it) {
 }
 
 // Tuit citado, en pequeño; al pulsarlo se abre como elemento propio.
-function quoteBlock(q) {
+function quoteBlock(q, compact = false) {
   if (!q) return "";
+  if (compact) {
+    const kind = q.article_status === "ok" ? " · Artículo de X" : "";
+    const title = q.article_status === "ok" && q.article_title ? `<div class="q-title">${esc(q.article_title)}</div>` : "";
+    const thumb = q.article_image || (q.media || [])[0];
+    return `<div class="quote card-quote" data-open="${esc(q.id)}" title="Abrir el tuit citado">
+      ${thumb ? `<img class="q-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
+      <div class="who">Cita a ${q.author_handle ? `@${esc(q.author_handle)}` : "un tuit"}${kind}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
+  }
   const who = q.author_handle ? `${esc(q.author_name || "")} <span>@${esc(q.author_handle)}</span>` : "<span>Tuit citado</span>";
   const title = q.article_status === "ok" && q.article_title ? `<div class="q-title">📰 ${esc(q.article_title)}</div>` : "";
   const thumb = q.article_image || (q.media || [])[0];
@@ -242,44 +252,114 @@ function byline(it) {
   return `<span class="by" data-author="${esc(it.author_handle)}" title="Filtrar por @${esc(it.author_handle)}">${av}<span class="h">@${esc(it.author_handle)}</span></span>`;
 }
 
-function card(it, i) {
-  const hasArticle = it.article_status === "ok";
-  const img = it.article_image || it.media[0];
-  const cover = hasArticle || img
-    ? img && !hasArticle ? `<img class="cover" loading="lazy" src="${esc(img)}" alt="" onerror="this.remove()">`
-    : img ? `<img class="cover" loading="lazy" src="${esc(img)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'cover fallback',style:'background:hsl(${hue(it.domain || it.id)} 45% 55%)',textContent:'${esc((it.domain || "?")[0].toUpperCase())}'}))">`
-      : `<div class="cover fallback" style="background:linear-gradient(135deg,hsl(${hue(it.domain || it.id)} 50% 55%),hsl(${(hue(it.domain || it.id) + 40) % 360} 55% 45%))">${esc((it.article_site || it.domain || "?")[0].toUpperCase())}</div>`
-    : "";
+// Título y extracto de la portada: los de GitHub («GitHub - autor/repo: descripción») quedan en autor/repo.
+function cardTitle(it) {
+  const title = cleanTitle(it.article_title, it.article_site);
+  const gh = title.match(/^GitHub - ([^:]+?):\s*(.*)$/);
+  if (!gh) return { title, excerpt: it.article_excerpt || "" };
+  return { title: gh[1], excerpt: it.article_excerpt || gh[2] };
+}
+
+// Dónde sale el elemento: en X (icono y texto propios) o en otra web (favicon y nombre del sitio).
+const fromXOf = (it) => it.article_status === "ok"
+  ? isXDomain(it.domain) || /^(x|twitter)$/i.test(it.article_site || "")
+  : !it.article_url;
+
+function origin(it, fromX) {
+  if (!fromX) return `<img src="${favicon(it.domain)}" alt=""><span class="site-name">${esc(it.article_site || it.domain)}</span>`;
+  const label = it.article_status === "ok" ? "Artículo de X" : it.thread_count ? `Hilo de ${it.thread_count}` : "Tuit";
+  return `<button class="src-x" data-act="tweet" title="Abrir en X" aria-label="Abrir en X">${icon("x")}</button><span class="site-name">${label}</span>`;
+}
+
+// Portada: la imagen del artículo, o un color de reserva con la inicial del sitio si no hay imagen o falla.
+function cover(it) {
+  const img = it.article_image ? `<img src="${esc(it.article_image)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  return `<div class="cover" style="--h:${hue(it.domain || it.id)}">${img}<span>${esc((it.article_site || it.domain || "?")[0].toUpperCase())}</span></div>`;
+}
+
+const whenOf = (it) => {
+  if (it.article_status !== "ok") return fmtDate(tweetDate(it.id));
   const mins = readMins(it.article_words);
-  const fromX = hasArticle ? isXDomain(it.domain) || /^(x|twitter)$/i.test(it.article_site || "") : !it.article_url;
-  const when = hasArticle ? (mins ? `${mins} min` : "") : fmtDate(tweetDate(it.id));
-  const status = it.article_status === "pending" ? "⏳ extrayendo…" : it.article_status === "failed" ? `<span class="status-fail" title="${esc(it.article_error)}">⚠︎ no se pudo leer</span>` : "";
-  return `<article class="card ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
-    ${it.note ? `<span class="badge-note" title="${esc(it.note)}">📝</span>` : ""}
-    ${cover}
+  return mins ? `${mins} min` : "";
+};
+
+const statusOf = (it) => it.article_status === "pending" ? "⏳ extrayendo…"
+  : it.article_status === "failed" ? `<span class="status-fail" title="${esc(it.article_error)}">⚠︎ no se pudo leer</span>` : "";
+
+// Acciones: en la tarjeta flotan sobre la portada (o bajan al pie en el móvil); en la lista van siempre a la vista.
+function acts(it, hasArticle, fromX) {
+  return `<div class="acts">
+    <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)" aria-label="Favorito">${icon("star")}</button>
+    <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)" aria-label="Leído">${icon("check")}</button>
+    ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)" aria-label="Quitar de X">${icon(xIcon(it))}</button>` : ""}
+    ${hasArticle && fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X" aria-label="Abrir en X">${icon("x")}</button>`}
+  </div>`;
+}
+
+// Vista de tarjetas: artículos con portada; tuits con el texto y, si tienen, la primera imagen debajo.
+function cardTile(it, i) {
+  const hasArticle = it.article_status === "ok";
+  const fromX = fromXOf(it);
+  const { title, excerpt } = cardTitle(it);
+  const when = whenOf(it);
+  const body = hasArticle
+    ? `<div class="site">${origin(it, fromX)}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
+      <h2>${esc(title)}</h2>
+      ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : excerpt ? `<p class="excerpt">${esc(excerpt)}</p>` : ""}`
+    : `<div class="tweet-head">${avatar(it)}<div class="who" ${it.author_handle ? `data-author="${esc(it.author_handle)}"` : ""}>
+        <b>${esc(it.author_name || it.author_handle || "")}</b>
+        <span>${[it.author_handle && `@${esc(it.author_handle)}`, when, it.thread_count && `Hilo de ${it.thread_count}`].filter(Boolean).join(" · ")}</span></div></div>
+      ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}
+      <p class="tweet-text">${linkify(it.tweet_text)}</p>
+      ${it.media[0] ? `<img class="tw-media" loading="lazy" src="${esc(it.media[0])}" alt="" onerror="this.remove()">` : ""}`;
+  return `<article class="card tile ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
+    ${hasArticle ? cover(it) : ""}
     <div class="body">
-      <div class="site">${fromX
-          ? `<button class="src-x" data-act="tweet" title="Abrir en X">${icon("x")}</button>`
-          : `<img src="${favicon(it.domain)}" alt="">${hasArticle ? `<span class="site-name">${esc(it.article_site || it.domain)}</span>` : `<a href="${esc(it.article_url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${esc(it.domain)} ↗</a>`}`}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
-      ${hasArticle ? `<h2>${esc(it.article_title)}</h2>
-        ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : it.article_excerpt ? `<p class="excerpt">${esc(it.article_excerpt)}</p>` : ""}`
-        : `${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}<p class="tweet-text">${linkify(it.tweet_text)}</p>`}
-      ${it.thread_count ? `<div class="thread-badge">🧵 Hilo de ${it.thread_count} tuits</div>` : ""}
-      ${quoteBlock(it.quoted)}
+      ${body}
+      ${quoteBlock(it.quoted, true)}
       <div class="meta">
-        ${status}
-        ${it.tags.slice(0, 4).map((t) => `<span class="chip" data-tag="${esc(t)}">#${esc(t)}</span>`).join("")}
-        <span class="actions">
-          <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)">${icon("star")}</button>
-          <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)">${icon("check")}</button>
-          ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)">${icon(xIcon(it))}</button>` : ""}
-          ${fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X">${icon("x")}</button>`}
-        </span>
+        ${statusOf(it)}
+        ${it.tags.slice(0, 3).map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}</span>`).join("")}
+        ${it.note ? `<span class="note" title="${esc(it.note)}">Nota: ${esc(it.note)}</span>` : ""}
+        ${it.favorite ? icon("star") : ""}
+        ${it.is_read ? "" : `<span class="unread" title="Por leer"></span>`}
       </div>
+      ${acts(it, hasArticle, fromX)}
     </div></article>`;
 }
 
+// Vista de lista: una fila por elemento, con miniatura, origen, título y una línea de apoyo.
+function cardRow(it, i) {
+  const hasArticle = it.article_status === "ok";
+  const fromX = fromXOf(it);
+  const { title, excerpt } = cardTitle(it);
+  const when = whenOf(it);
+  const q = it.quoted;
+  const sub = it.snippet ? marked(it.snippet)
+    : hasArticle ? esc(excerpt)
+    : q ? `↪ ${q.author_handle ? esc(`@${q.author_handle}: `) : ""}${esc(q.tweet_text)}` : "";
+  return `<article class="card row ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
+    <div class="thumb">${hasArticle ? cover(it) : avatar(it)}</div>
+    <div class="mid">
+      <div class="site">${origin(it, fromX)}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
+      <div class="ttl">${esc(hasArticle ? title : unX(it.tweet_text))}</div>
+      ${sub ? `<div class="sub">${sub}</div>` : ""}
+    </div>
+    ${acts(it, hasArticle, fromX)}
+  </article>`;
+}
+
+function card(it, i) {
+  return state.layout === "list" ? cardRow(it, i) : cardTile(it, i);
+}
+
 function renderGrid() {
+  $("#grid").classList.toggle("list", state.layout === "list");
+  document.querySelectorAll("[data-layout]").forEach((b) => {
+    const on = b.dataset.layout === state.layout;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-pressed", on);
+  });
   $("#grid").innerHTML = state.items.map(card).join("");
   const filters = [
     state.q && ["q", `🔎 “${state.q}”`], state.tag && ["tag", `#${state.tag}`],
@@ -575,6 +655,8 @@ document.addEventListener("click", async (e) => {
   const t = e.target;
   const v = t.closest("[data-view]");
   if (v) { state.view = v.dataset.view; $("#sidebar").classList.remove("open"); return refresh(); }
+  const lay = t.closest("[data-layout]");
+  if (lay) return setLayout(lay.dataset.layout);
   const clear = t.closest("[data-clear]");
   if (clear) { state[clear.dataset.clear] = ""; if (clear.dataset.clear === "q") $("#q").value = ""; return refresh(); }
   const tag = t.closest("[data-tag]");
@@ -643,6 +725,12 @@ $("#retryBtn").onclick = async (e) => {
 $("#importBtn").onclick = openImport;
 $("#moreBtn").onclick = () => load(true);
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");
+// Tarjetas o lista: sólo se repinta, no se vuelve a pedir nada a la API.
+function setLayout(layout) {
+  state.layout = layout;
+  try { localStorage.setItem("layout", layout); } catch {}
+  renderGrid();
+}
 $("#sort").onchange = (e) => { state.sort = e.target.value; load(); };
 $("#themeBtn").onclick = () => {
   const dark = matchMedia("(prefers-color-scheme: dark)").matches;

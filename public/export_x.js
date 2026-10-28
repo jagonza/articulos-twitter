@@ -6,7 +6,9 @@
 //   2. Abre la consola del navegador (Cmd+Opt+J en Chrome / Cmd+Opt+K en Firefox).
 //   3. Pega este script entero (no su nombre) y pulsa Enter.
 //      La primera vez Chrome pide escribir `allow pasting` antes de dejarte pegar.
-//   4. Al terminar descargará un JSON. Súbelo en Tweetshelf → Importar.
+//   4. Te pregunta cuántos exportar (los más recientes primero; vacío = todos). Así puedes ir por
+//      tandas: importas, los quitas de X con «Limpiar X» y repites.
+//   5. Al terminar descargará un JSON. Súbelo en Tweetshelf → Importar.
 //
 // Pide a X la misma lista que está mostrando la página, con todos los datos de cada tuit: texto
 // completo, enlaces reales, imágenes, el tuit que cita y los «Artículos» de X. Los tuits citados
@@ -14,7 +16,8 @@
 // página mientras baja sola.
 //
 // Puedes parar antes con `window.__stopExport = true` en la consola: descargará lo recogido.
-// Al final pide uno a uno los hilos, los tuits largos y los Artículos de X, que en la lista llegan recortados.
+// Al final abre la conversación de cada tuit con respuestas para ver si el autor sigue un hilo, y pide los
+// tuits largos y los Artículos de X, que en la lista llegan recortados.
 (async () => {
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = (...a) => console.log("%cTweetshelf", "color:#d9480f;font-weight:bold", ...a);
@@ -25,6 +28,11 @@
   const items = new Map();
   let api = null; // cabeceras y «features» de la petición de la lista, para reutilizarlas
   let source = /\/likes/.test(location.pathname) ? "like" : "bookmark";
+  // Se puede exportar por tandas: los N más recientes (los que salen primero en la lista).
+  const answer = prompt("Tweetshelf: ¿cuántos exporto? Los más recientes primero. Déjalo vacío para exportarlos todos.", "30");
+  if (answer === null) return log("Cancelado.");
+  const LIMIT = Math.max(0, parseInt(answer, 10) || 0);
+  const isFull = () => LIMIT > 0 && [...items.values()].filter((i) => i.source !== "quoted").length >= LIMIT;
 
   // ---------------------------------------------------------------- lectura de tuits de la API
 
@@ -163,19 +171,20 @@
       // En las listas X sólo manda el principio de los tuits largos y de los artículos: luego se pide el resto.
       _needsFull: Boolean((art?.rest_id && !fullText) || (r.note_tweet && !note?.text)
         || (!note?.text && (r.legacy.full_text || "").length >= 250)),
-      _threadRoot: src === "quoted" ? null : threadRoot(r, text),
+      _threadRoot: src === "quoted" ? null : threadRoot(r),
       _quoted: quoted,
     };
   }
 
   // ¿Es parte de un hilo del propio autor? Devuelve el id del primer tuit del hilo.
-  function threadRoot(r, text) {
+  function threadRoot(r) {
     const L = r.legacy;
     const authorId = L.user_id_str || r.core?.user_results?.result?.rest_id;
     if (L.self_thread?.id_str) return L.self_thread.id_str;
     if (L.in_reply_to_user_id_str && L.in_reply_to_user_id_str === authorId) return L.conversation_id_str || null;
-    if (L.reply_count > 0 && /🧵|👇|\bhilo\b|\bthread\b|(^|\s)1\/\d*(\s|$)/i.test(text)) return r.rest_id;
-    return null;
+    // La lista no trae las respuestas: cualquier tuit con respuestas puede tener continuación del autor, y sólo
+    // abriendo su conversación se sabe.
+    return L.reply_count === 0 ? null : r.rest_id;
   }
 
   function addTweet(raw, src) {
@@ -201,7 +210,7 @@
       if (typeof o.entryId === "string") {
         if (o.entryId.startsWith("cursor-bottom")) cursor = o.content?.value || o.content?.itemContent?.value || cursor;
         const tr = o.content?.itemContent?.tweet_results?.result;
-        if (tr && addTweet(tr, source)) added++;
+        if (tr && !isFull() && addTweet(tr, source)) added++;
       }
       for (const k in o) if (k !== "tweet_results") walk(o[k]);
     })(json);
@@ -275,7 +284,7 @@
       const page = parsePage(await r.json());
       log(`${items.size} tuits recogidos…`);
       emptyPages = page.added ? 0 : emptyPages + 1;
-      if (!page.cursor || page.cursor === cursor || emptyPages >= 2) break;
+      if (isFull() || !page.cursor || page.cursor === cursor || emptyPages >= 2) break;
       cursor = page.cursor;
       await sleep(1200);
     }
@@ -389,7 +398,7 @@
         "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
       return;
     }
-    log(`Buscando ${pending.length} posibles hilos…`);
+    log(`Revisando si ${pending.length} tuits con respuestas son hilos…`);
     let threads = 0, done = 0;
     for (const it of pending) {
       if (window.__stopExport) break;
@@ -448,12 +457,12 @@
   async function exportViaPage() {
     log("Leyendo la página mientras baja…");
     let idle = 0;
-    while (idle < 8 && !window.__stopExport) {
+    while (idle < 8 && !window.__stopExport && !isFull()) {
       const before = items.size;
       document.querySelectorAll('article[data-testid="tweet"]').forEach((a) => {
         const timeLink = a.querySelector('a[href*="/status/"] time')?.closest("a");
         const m = timeLink?.getAttribute("href")?.match(/^\/([^/]+)\/status\/(\d+)/);
-        if (!m || items.has(m[2])) return;
+        if (!m || items.has(m[2]) || isFull()) return;
         const links = new Set();
         a.querySelectorAll('[data-testid="tweetText"] a[href], [data-testid="card.wrapper"] a[href]').forEach((l) => {
           if (!/^https?:\/\/(x|twitter)\.com\//.test(l.href)) links.add(l.href);

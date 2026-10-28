@@ -26,6 +26,7 @@ const ICONS = {
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
   external: '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/>',
   refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
+  dots: '<path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
   trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
 };
 const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
@@ -286,14 +287,24 @@ const whenOf = (it) => {
 const statusOf = (it) => it.article_status === "pending" ? "⏳ extrayendo…"
   : it.article_status === "failed" ? `<span class="status-fail" title="${esc(it.article_error)}">⚠︎ no se pudo leer</span>` : "";
 
-// Acciones: en la tarjeta flotan sobre la portada (o bajan al pie en el móvil); en la lista van siempre a la vista.
-function acts(it, hasArticle, fromX) {
+// Acciones de la tarjeta: flotan sobre la portada al pasar el ratón, y en el móvil van al pie.
+function acts(it) {
   return `<div class="acts">
     <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)" aria-label="Favorito">${icon("star")}</button>
     <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)" aria-label="Leído">${icon("check")}</button>
     ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)" aria-label="Quitar de X">${icon(xIcon(it))}</button>` : ""}
-    ${hasArticle && fromX ? "" : `<button class="act" data-act="tweet" title="Abrir en X" aria-label="Abrir en X">${icon("x")}</button>`}
   </div>`;
+}
+
+// Lista: un solo botón de tres puntos que despliega las acciones. El enlace a X ya va en el origen.
+function rowMenu(it) {
+  return `<div class="more-wrap">
+    <button class="act menu-btn" data-menu title="Más acciones" aria-label="Más acciones" aria-haspopup="true">${icon("dots")}</button>
+    <div class="menu" role="menu">
+      <button role="menuitem" data-act="favorite">${icon("star")}${it.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}</button>
+      <button role="menuitem" data-act="is_read">${icon("check")}${it.is_read ? "Marcar como no leído" : "Marcar como leído"}</button>
+      ${inX(it) ? `<button role="menuitem" data-act="x_status">${icon(xIcon(it))}${it.x_status === "remove" ? "No quitar de X" : "Quitar de X"}</button>` : ""}
+    </div></div>`;
 }
 
 // Vista de tarjetas: artículos con portada; tuits con el texto y, si tienen, la primera imagen debajo.
@@ -322,9 +333,8 @@ function cardTile(it, i) {
         ${it.tags.slice(0, 3).map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}</span>`).join("")}
         ${it.note ? `<span class="note" title="${esc(it.note)}">Nota: ${esc(it.note)}</span>` : ""}
         ${it.favorite ? icon("star") : ""}
-        ${it.is_read ? "" : `<span class="unread" title="Por leer"></span>`}
       </div>
-      ${acts(it, hasArticle, fromX)}
+      ${acts(it)}
     </div></article>`;
 }
 
@@ -345,7 +355,7 @@ function cardRow(it, i) {
       <div class="ttl">${esc(hasArticle ? title : unX(it.tweet_text))}</div>
       ${sub ? `<div class="sub">${sub}</div>` : ""}
     </div>
-    ${acts(it, hasArticle, fromX)}
+    ${rowMenu(it)}
   </article>`;
 }
 
@@ -432,9 +442,9 @@ async function openItem(it) {
   d.innerHTML = `
     <div class="content" tabindex="-1">
       <button class="tbtn icon m-close" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
+      ${isArticle && full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
       <article class="page">
       ${isArticle ? `
-        ${full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
         <p class="kicker">${fromX ? icon("x") : `<img src="${favicon(full.domain)}" alt="" onerror="this.remove()">`}<b>${esc(fromX ? "Artículo de X" : full.article_site || full.domain)}</b>${mins ? `<span>·</span><span>${mins} min de lectura</span>` : ""}</p>
         <h1>${esc(title)}</h1>
         ${dek ? `<p class="dek">${esc(dek)}</p>` : ""}
@@ -651,8 +661,19 @@ async function pollProgress(refreshStatus = true) {
 
 // ------------------------------------------------------------------ eventos
 
+const closeMenus = () => document.querySelectorAll(".menu.open").forEach((m) => m.classList.remove("open"));
+
 document.addEventListener("click", async (e) => {
   const t = e.target;
+  const menuBtn = t.closest("[data-menu]");
+  if (!menuBtn && !t.closest(".menu")) closeMenus();
+  if (menuBtn) {
+    const menu = menuBtn.nextElementSibling;
+    const open = !menu.classList.contains("open");
+    closeMenus();
+    menu.classList.toggle("open", open);
+    return;
+  }
   const v = t.closest("[data-view]");
   if (v) { state.view = v.dataset.view; $("#sidebar").classList.remove("open"); return refresh(); }
   const lay = t.closest("[data-layout]");
@@ -679,7 +700,7 @@ document.addEventListener("click", async (e) => {
   const open = t.closest("[data-open]");
   if (open) { e.stopPropagation(); return openItem({ id: open.dataset.open }); }
   const c = t.closest(".card");
-  if (c) { state.focus = +c.dataset.i; return openItem(state.items[c.dataset.i]); }
+  if (c) return openItem(state.items[c.dataset.i]);
 
   const d = t.closest("[data-d]");
   if (d && state.open) {

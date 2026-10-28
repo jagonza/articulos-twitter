@@ -111,12 +111,19 @@ select, .btn, .icon-btn {
 .card.read { opacity: .72; }
 .card .cover { width: 100%; aspect-ratio: 1.9; object-fit: cover; display: block; background: var(--line); }
 .card .cover.fallback {
-  display: grid; place-items: center; font: 700 44px var(--serif); color: #fff8;
+  display: grid; place-items: center; font: 700 44px var(--sans); color: #fff8;
 }
 .card .body { padding: 14px 16px 12px; }
-.card .site { display: flex; gap: 6px; align-items: center; font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.card .site { display: flex; gap: 6px; align-items: center; font-size: 12.5px; color: var(--muted); margin-bottom: 8px; min-width: 0; }
 .card .site img { width: 14px; height: 14px; border-radius: 3px; }
-.card h2 { font: 600 18px/1.25 var(--serif); margin: 0 0 6px; letter-spacing: -.01em; }
+.card .site .dot { opacity: .5; }
+.card .site .site-name { white-space: nowrap; }
+.card .site .src-x { all: unset; cursor: pointer; display: grid; place-items: center; width: 22px; height: 22px; margin-left: -3px; border-radius: 6px; color: var(--ink); }
+.card .site .src-x:hover { background: var(--bg); }
+.card .site .src-x svg { width: 15px; height: 15px; }
+.card .site .by { margin-left: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.card .site .by:hover { color: var(--accent); }
+.card h2 { font: 600 22px/1.2 var(--sans); margin: 0 0 8px; letter-spacing: -.02em; text-wrap: balance; }
 .card .excerpt { font-size: 13.5px; color: var(--muted); margin: 0 0 10px; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
 .card .snippet { font-size: 13px; margin: 0 0 10px; }
 .tweet { display: flex; gap: 10px; font-size: 13.5px; }
@@ -146,10 +153,14 @@ select, .btn, .icon-btn {
 kbd { font: 12px var(--sans); background: var(--line); border-radius: 4px; padding: 1px 5px; }
 .card .meta { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 12px; color: var(--muted); }
 .card .meta .chip { font-size: 11px; padding: 1px 7px; }
-.card .actions { margin-left: auto; display: flex; gap: 2px; }
-.act { all: unset; cursor: pointer; padding: 3px 6px; border-radius: 7px; font-size: 15px; filter: grayscale(1); opacity: .55; }
-.act:hover { background: var(--bg); opacity: 1; }
-.act.on { filter: none; opacity: 1; }
+.card .actions { margin-left: auto; display: flex; gap: 2px; margin-right: -6px; }
+.act { all: unset; cursor: pointer; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; color: var(--muted); }
+.act:hover { background: var(--bg); color: var(--ink); }
+.act:focus-visible { outline: 2px solid var(--accent); }
+.act.on { color: var(--accent); }
+.act.fav.on { color: var(--star); }
+.act.fav.on svg { fill: currentColor; }
+svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 .badge-note { position: absolute; top: 10px; right: 10px; background: var(--panel); border-radius: 99px; padding: 2px 8px; font-size: 12px; box-shadow: var(--shadow); }
 .status-fail { color: #c92a2a; }
 

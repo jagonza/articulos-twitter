@@ -14,7 +14,14 @@ const plainMd = (s) => String(s ?? "").replace(/!\[[^\]]*\]\([^)]*\)?/g, "").rep
   .replace(/(\*\*|~~|`)/g, "").replace(/(^|\n)\s*(#{1,6}|>|[-*]|\d+[.)])\s+/g, "$1");
 // Una URL se muestra como su nombre corto, igual que en el cuerpo del tuit (linkify).
 const urlLabel = (u) => u.replace(/^https?:\/\//, "").slice(0, 40) + (u.length > 48 ? "…" : "");
-const marked = (s) => esc(plainMd(s)).replace(/https?:\/\/[^\s<]+/g, urlLabel).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
+// El fragmento de búsqueda corta a veces la URL sin «https://» («github.com/…»): también se acorta.
+// Las marcas de coincidencia dentro de una URL se quitan, para que no queden etiquetas abiertas.
+const marked = (s) => esc(plainMd(s))
+  .replace(/https?:\/\/[^\s<]+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<]*/gi, (u) => {
+    const clean = u.replace(/[\u0001\u0002]/g, "");
+    return urlLabel(/^https?:/i.test(clean) ? clean : `https://${clean}`);
+  })
+  .replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
 const favicon = (d) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64`;
 const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
 // Iconos de Tabler (https://tabler.io/icons), en línea para no depender de nada externo.

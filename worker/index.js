@@ -366,6 +366,27 @@ async function api(req, env, url) {
   return err(404, "Ruta desconocida");
 }
 
+// ------------------------------------------------------------------ imágenes
+
+// Las imágenes de pbs.twimg.com puestas dentro de otra web a menudo no se ven (X mira el Referer
+// y los bloqueadores de rastreo cortan ese dominio),
+// así que el Worker las pide él, sin Referer, y Cloudflare las guarda en su caché un mes.
+// Sólo ese host: no es un proxy abierto, y además va detrás de la contraseña.
+async function image(src) {
+  let u;
+  try { u = new URL(src); } catch { return err(400, "URL no válida"); }
+  if (u.protocol !== "https:" || u.hostname !== "pbs.twimg.com") return err(400, "Sólo imágenes de X");
+  let r;
+  try {
+    r = await fetch(u.toString(), { headers: { Accept: "image/*" }, cf: { cacheEverything: true, cacheTtl: 2592000 } });
+  } catch {
+    return err(502, "X no responde");
+  }
+  const type = r.headers.get("Content-Type") || "";
+  if (!r.ok || !type.startsWith("image/")) return err(r.ok ? 415 : r.status, "Imagen no disponible");
+  return new Response(r.body, { headers: { "Content-Type": type, "Cache-Control": "private, max-age=2592000, immutable" } });
+}
+
 // ------------------------------------------------------------------ entrada
 
 export default {
@@ -393,6 +414,7 @@ export default {
       if (url.pathname.startsWith("/api/")) return err(401, "Inicia sesión");
       return Response.redirect(`${url.origin}/login`, 302);
     }
+    if (url.pathname === "/img") return image(url.searchParams.get("u"));
     if (url.pathname.startsWith("/api/")) {
       try {
         return await api(req, env, url);

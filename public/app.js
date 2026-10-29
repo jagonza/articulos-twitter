@@ -36,6 +36,8 @@ const isXDomain = (d) => /^(www\.)?(x|twitter)\.com$/.test(d || "");
 // X sirve las miniaturas de vídeo y de GIF desde rutas propias: la URL basta para saber qué es.
 const mediaKind = (url) => /\/tweet_video_thumb\//.test(url) ? "gif"
   : /\/(amplify|ext_tw)_video_thumb\//.test(url) ? "video" : "photo";
+// Las imágenes de X pasan por el Worker (/img): pedidas desde aquí a pbs.twimg.com, no se ven.
+const pic = (url) => /^https:\/\/pbs\.twimg\.com\//.test(url || "") ? `/img?u=${encodeURIComponent(url)}` : url;
 const statusUrl = (handle, id) => handle ? `https://x.com/${handle}/status/${id}` : `https://x.com/i/status/${id}`;
 const hue = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 // Los ids de X llevan la fecha dentro (snowflake).
@@ -79,7 +81,7 @@ async function loadStats() {
     `<button class="chip ${state.tag === t.tag ? "active" : ""}" data-tag="${esc(t.tag)}">#${esc(t.tag)} <span class="muted">${t.n}</span></button>`).join("")
     : `<span class="muted small">Añade etiquetas desde el lector</span>`;
   $("#authorList").innerHTML = s.authors.map((a) =>
-    `<li data-author="${esc(a.handle)}" class="${state.author === a.handle ? "active" : ""}">${a.avatar ? `<img src="${esc(a.avatar)}" alt="" style="border-radius:50%">` : ""}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></li>`).join("");
+    `<li data-author="${esc(a.handle)}" class="${state.author === a.handle ? "active" : ""}">${a.avatar ? `<img src="${esc(pic(a.avatar))}" alt="" style="border-radius:50%">` : ""}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></li>`).join("");
   $("#empty").classList.toggle("hidden", s.counts.all + s.counts.archived > 0);
   state.stats = s;
 }
@@ -90,7 +92,7 @@ const refresh = () => Promise.all([load(), loadStats()]);
 
 function avatar(it) {
   return it.author_avatar
-    ? `<img class="avatar" src="${esc(it.author_avatar)}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'avatar',textContent:'${esc((it.author_name || it.author_handle || "?")[0].toUpperCase())}'}))">`
+    ? `<img class="avatar" src="${esc(pic(it.author_avatar))}" alt="" onerror="this.replaceWith(Object.assign(document.createElement('div'),{className:'avatar',textContent:'${esc((it.author_name || it.author_handle || "?")[0].toUpperCase())}'}))">`
     : `<div class="avatar">${esc((it.author_name || it.author_handle || "?")[0].toUpperCase())}</div>`;
 }
 
@@ -102,14 +104,14 @@ function quoteBlock(q, compact = false) {
     const title = q.article_status === "ok" && q.article_title ? `<div class="q-title">${esc(q.article_title)}</div>` : "";
     const thumb = q.article_image || (q.media || [])[0];
     return `<div class="quote card-quote" data-open="${esc(q.id)}" title="Abrir el tuit citado">
-      ${thumb ? `<img class="q-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
+      ${thumb ? `<img class="q-thumb" src="${esc(pic(thumb))}" alt="" loading="lazy" onerror="this.remove()">` : ""}
       <div class="who">Cita a ${q.author_handle ? `@${esc(q.author_handle)}` : "un tuit"}${kind}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
   }
   const who = q.author_handle ? `${esc(q.author_name || "")} <span>@${esc(q.author_handle)}</span>` : "<span>Tuit citado</span>";
   const title = q.article_status === "ok" && q.article_title ? `<div class="q-title">📰 ${esc(q.article_title)}</div>` : "";
   const thumb = q.article_image || (q.media || [])[0];
   return `<div class="quote" data-open="${esc(q.id)}" title="Abrir el tuit citado">
-    ${thumb ? `<img class="q-thumb" src="${esc(thumb)}" alt="" loading="lazy" onerror="this.remove()">` : ""}
+    ${thumb ? `<img class="q-thumb" src="${esc(pic(thumb))}" alt="" loading="lazy" onerror="this.remove()">` : ""}
     <div class="who">${icon("quote")} ${who}</div>${title}<div class="text">${esc(q.tweet_text)}</div></div>`;
 }
 
@@ -155,7 +157,7 @@ function mdInline(text) {
     out.push(fmt(rest.slice(last, m.index)));
     if (m[2] !== undefined) {
       const u = safeUrl(m[2]);
-      out.push(u ? `<img src="${esc(u)}" alt="${esc(m[1])}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "");
+      out.push(u ? `<img src="${esc(pic(u))}" alt="${esc(m[1])}" loading="lazy" referrerpolicy="no-referrer" onerror="this.remove()">` : "");
     } else {
       const u = safeUrl(m[4]);
       out.push(u ? `<a href="${esc(u)}" target="_blank" rel="noopener">${fmt(m[3])}</a>` : fmt(m[3]));
@@ -239,7 +241,7 @@ function threadBlock(it) {
 // Un medio del tuit. Los vídeos y GIF no se guardan: se ve su miniatura con un «play» que abre el tuit en X.
 function mediaItem(url, href) {
   const kind = mediaKind(url);
-  const img = `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">`;
+  const img = `<img src="${esc(pic(url))}" alt="" loading="lazy" onerror="this.remove()">`;
   if (kind === "photo" || !href) return img;
   const label = kind === "gif" ? "GIF" : "Vídeo";
   return `<a class="vid" href="${esc(href)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
@@ -274,7 +276,7 @@ function threadFlow(it) {
 function byline(it) {
   if (!it.author_handle) return "";
   const av = it.author_avatar
-    ? `<img class="av" src="${esc(it.author_avatar)}" alt="" loading="lazy" onerror="this.remove()">`
+    ? `<img class="av" src="${esc(pic(it.author_avatar))}" alt="" loading="lazy" onerror="this.remove()">`
     : `<i class="av">${esc((it.author_name || it.author_handle)[0].toUpperCase())}</i>`;
   return `<span class="by" data-author="${esc(it.author_handle)}" title="Filtrar por @${esc(it.author_handle)}">${av}<span class="h">@${esc(it.author_handle)}</span></span>`;
 }
@@ -300,7 +302,7 @@ function origin(it, fromX) {
 
 // Portada: la imagen del artículo, o un color de reserva con la inicial del sitio si no hay imagen o falla.
 function cover(it, src = it.article_image) {
-  const img = src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : "";
+  const img = src ? `<img src="${esc(pic(src))}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<div class="cover" style="--h:${hue(it.domain || it.id)}">${img}<span>${esc((it.article_site || it.domain || it.author_name || it.author_handle || "?")[0].toUpperCase())}</span></div>`;
 }
 
@@ -353,7 +355,7 @@ function cardTile(it, i) {
       <p class="tweet-text">${linkify(it.tweet_text)}</p>
       ${linkList(it)}
       ${it.media[0] ? `<div class="tw-media ${mediaKind(it.media[0])}">
-        <img loading="lazy" src="${esc(it.media[0])}" alt="" onerror="this.remove()">${mediaBadge(it.media[0])}</div>` : ""}`;
+        <img loading="lazy" src="${esc(pic(it.media[0]))}" alt="" onerror="this.remove()">${mediaBadge(it.media[0])}</div>` : ""}`;
   return `<article class="card tile ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
     ${hasArticle ? cover(it) : ""}
     <div class="body">
@@ -504,7 +506,7 @@ async function openItem(it) {
   d.innerHTML = `
     <div class="content" tabindex="-1">
       <button class="tbtn icon m-close" data-d="close" title="Cerrar (Esc)" aria-label="Cerrar">${icon("close")}</button>
-      ${isArticle && full.article_image ? `<img class="hero" src="${esc(full.article_image)}" alt="" onerror="this.remove()">` : ""}
+      ${isArticle && full.article_image ? `<img class="hero" src="${esc(pic(full.article_image))}" alt="" onerror="this.remove()">` : ""}
       <article class="page">
       ${isArticle ? `
         <p class="kicker">${fromX ? icon("x") : `<img src="${favicon(full.domain)}" alt="" onerror="this.remove()">`}<b>${esc(fromX ? "Artículo de X" : full.article_site || full.domain)}</b>${mins ? `<span>·</span><span>${mins} min de lectura</span>` : ""}</p>

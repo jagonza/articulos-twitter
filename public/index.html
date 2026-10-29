@@ -61,7 +61,7 @@
       </div>
       <button class="btn ghost" id="surpriseBtn" title="Abre un artículo sin leer al azar">🎲 Sorpréndeme</button>
       <button class="icon-btn" id="themeBtn" title="Cambiar tema">◐</button>
-      <button class="btn primary" id="importBtn">＋ Importar</button>
+      <button class="btn primary" id="importBtn">＋ Añadir</button>
     </header>
 
 
@@ -85,9 +85,18 @@
   <!-- Importar -->
   <dialog id="importDlg">
     <form method="dialog" class="dlg-head">
-      <h2>Importar favoritos</h2>
+      <h2>Añadir a la estantería</h2>
       <button class="icon-btn" aria-label="Cerrar">✕</button>
     </form>
+    <form id="addForm" class="add" novalidate>
+      <label class="dlg-sub" for="addUrl">Pegar enlace</label>
+      <div class="add-row">
+        <input id="addUrl" type="url" placeholder="https://x.com/…/status/…" inputmode="url" autocomplete="off" enterkeyhint="go">
+        <button class="btn primary" id="addBtn" type="submit">Añadir</button>
+      </div>
+      <p class="add-error small hidden" id="addError" role="alert"></p>
+    </form>
+    <p class="dlg-sub">O importa muchos de una vez</p>
     <label class="drop" id="drop">
       <input type="file" id="fileInput" multiple accept=".zip,.js,.json,.csv">
       <div class="big">⬆️</div>

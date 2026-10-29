@@ -1,0 +1,178 @@
+{
+  "code": 200,
+  "message": "OK",
+  "status": {
+    "id": "1000000000000000001",
+    "text": "Primer tuit del hilo y del Artículo https://x.com/i/article/2000000000000000009",
+    "author": {
+      "screen_name": "ejemplo",
+      "name": "Ejemplo",
+      "avatar_url": "https://pbs.twimg.com/profile_images/1/avatar_normal.jpg"
+    },
+    "created_timestamp": 1761000000,
+    "media": {
+      "photos": [
+        {
+          "url": "https://pbs.twimg.com/media/FOTO1.jpg"
+        }
+      ],
+      "videos": []
+    },
+    "quote": null,
+    "article": {
+      "id": "2000000000000000009",
+      "title": "Un Artículo de prueba",
+      "preview_text": "Entradilla del Artículo.",
+      "cover_media": {
+        "media_info": {
+          "original_img_url": "https://pbs.twimg.com/media/PORTADA.jpg"
+        }
+      },
+      "media_entities": [
+        {
+          "media_id": "555",
+          "media_info": {
+            "original_img_url": "https://pbs.twimg.com/media/DENTRO.jpg"
+          }
+        }
+      ],
+      "content": {
+        "blocks": [
+          {
+            "type": "header-one",
+            "text": "Título de sección",
+            "inlineStyleRanges": [],
+            "entityRanges": []
+          },
+          {
+            "type": "unstyled",
+            "text": "Un párrafo con negrita y un enlace.",
+            "inlineStyleRanges": [
+              {
+                "offset": 15,
+                "length": 7,
+                "style": "Bold"
+              }
+            ],
+            "entityRanges": [
+              {
+                "offset": 28,
+                "length": 6,
+                "key": 0
+              }
+            ]
+          },
+          {
+            "type": "unordered-list-item",
+            "text": "Primer punto",
+            "inlineStyleRanges": [],
+            "entityRanges": []
+          },
+          {
+            "type": "unordered-list-item",
+            "text": "Segundo punto",
+            "inlineStyleRanges": [],
+            "entityRanges": []
+          },
+          {
+            "type": "atomic",
+            "text": " ",
+            "inlineStyleRanges": [],
+            "entityRanges": [
+              {
+                "offset": 0,
+                "length": 1,
+                "key": 1
+              }
+            ]
+          }
+        ],
+        "entityMap": {
+          "0": {
+            "type": "LINK",
+            "data": {
+              "url": "https://example.org/articulo"
+            }
+          },
+          "1": {
+            "type": "MEDIA",
+            "data": {
+              "mediaItems": [
+                {
+                  "mediaId": "555"
+                }
+              ],
+              "caption": "Foto"
+            }
+          }
+        }
+      }
+    }
+  },
+  "thread": [
+    {
+      "id": "1000000000000000001",
+      "text": "Hilo de prueba, primer tuit",
+      "author": {
+        "screen_name": "ejemplo",
+        "name": "Ejemplo",
+        "avatar_url": "https://pbs.twimg.com/profile_images/1/avatar_normal.jpg"
+      },
+      "created_timestamp": 1761000000,
+      "media": {
+        "photos": [
+          {
+            "url": "https://pbs.twimg.com/media/FOTO1.jpg"
+          }
+        ],
+        "videos": []
+      }
+    },
+    {
+      "id": "1000000000000000002",
+      "text": "Segundo tuit con un vídeo y una web: https://example.org/nota",
+      "author": {
+        "screen_name": "ejemplo",
+        "name": "Ejemplo",
+        "avatar_url": "https://pbs.twimg.com/profile_images/1/avatar_normal.jpg"
+      },
+      "created_timestamp": 1761000060,
+      "media": {
+        "photos": [],
+        "videos": [
+          {
+            "thumbnail_url": "https://pbs.twimg.com/amplify_video_thumb/2/img/VID.jpg"
+          }
+        ]
+      }
+    },
+    {
+      "id": "1000000000000000003",
+      "text": "Tercero, de otro autor, no entra en el hilo",
+      "author": {
+        "screen_name": "otra",
+        "name": "Otra",
+        "avatar_url": null
+      },
+      "created_timestamp": 1761000120,
+      "media": {
+        "photos": [],
+        "videos": []
+      }
+    },
+    {
+      "id": "1000000000000000004",
+      "text": "Tercero del hilo, sin Artículo",
+      "author": {
+        "screen_name": "ejemplo",
+        "name": "Ejemplo",
+        "avatar_url": "https://pbs.twimg.com/profile_images/1/avatar_normal.jpg"
+      },
+      "created_timestamp": 1761000180,
+      "media": {
+        "photos": [],
+        "videos": []
+      }
+    }
+  ]
+}

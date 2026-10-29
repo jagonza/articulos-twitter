@@ -1,6 +1,6 @@
 // Capturas de la app en local para comprobar cambios de interfaz. Necesita `npm run dev` en marcha.
 // Uso: node scripts/screenshots.cjs [carpeta]   (por defecto .wrangler/shots)
-// Saca la portada y el lector (un artículo y un hilo) en escritorio oscuro y en móvil claro,
+// Saca la portada y el lector (un artículo, un hilo y un tuit con vídeo) en escritorio oscuro y en móvil claro,
 // y la portada en vista de lista (escritorio-lista, movil-lista).
 const fs = require("fs");
 const path = require("path");
@@ -35,7 +35,7 @@ const password = (vars.match(/^APP_PASSWORD=(.*)$/m) || [])[1] || "cambia-esto";
     await page.waitForTimeout(800);
     await page.screenshot({ path: path.join(outDir, `${name}-portada.png`) });
     if (layout === "list") { await context.close(); continue; }
-    for (const [kind, selector] of [["articulo", ".card:has(h2)"], ["hilo", ".card:has-text(\"Hilo de\")"]]) {
+    for (const [kind, selector] of [["articulo", ".card:has(h2)"], ["hilo", ".card:has-text(\"Hilo de\")"], ["video", ".card:has(.vid-badge)"]]) {
       const card = page.locator(selector).first();
       if (!(await card.count())) continue;
       await card.click();

@@ -164,7 +164,9 @@ select, .btn, .icon-btn {
 .links svg { width: 16px; height: 16px; flex: none; }
 .drawer .links { margin: -14px 0 30px; }
 .drawer .links a { font-size: 15px; }
-.card .tw-media { display: block; width: 100%; aspect-ratio: 1.6; object-fit: cover; border-radius: 9px; margin: 0 0 12px; background: var(--line); }
+.card .tw-media { position: relative; aspect-ratio: 1.6; border-radius: 9px; margin: 0 0 12px; overflow: hidden; background: var(--line); }
+.card .tw-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.card .tw-media.photo:not(:has(img)) { display: none; }
 
 /* cita dentro de la tarjeta: caja hundida con miniatura; la del lector no cambia */
 .card .quote { margin: 0 0 12px; padding: 12px; border-radius: 10px; background: var(--sunk); border: 1px solid var(--line); font-size: 13px; }
@@ -222,7 +224,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
   box-shadow: none; margin: 0;
 }
 .card.row:hover { background: var(--panel); border-color: transparent; border-bottom-color: var(--line); box-shadow: none; }
-.card.row .thumb { align-self: stretch; display: grid; }
+.card.row .thumb { position: relative; align-self: stretch; display: grid; }
 .card.row .cover { width: 100%; height: 100%; min-height: 84px; aspect-ratio: auto; border-radius: 9px; font-size: 26px; }
 .card.row .mid { min-width: 0; align-self: center; }
 .card.row .more-wrap { align-self: center; }
@@ -370,6 +372,30 @@ html.reading { overflow: hidden; }
 .thread .text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .media-row { display: flex; gap: 8px; overflow-x: auto; margin-top: 10px; }
 .media-row img { height: 120px; border-radius: 10px; }
+
+/* Vídeos y GIF: miniatura con «play»; el enlace abre el tuit en X. */
+.vid { position: relative; display: block; align-self: flex-start; border-radius: 12px; overflow: hidden;
+  background: var(--sunk); min-width: 160px; min-height: 120px; color: #fff; }
+/* «.drawer a» pinta los enlaces de acento: el vídeo mantiene el blanco sobre la miniatura. */
+.drawer .vid, .vid:hover { color: #fff; text-decoration: none; }
+.vid img { display: block; }
+.vid-play { position: absolute; inset: 0; margin: auto; width: 56px; height: 56px; border-radius: 50%;
+  display: grid; place-items: center; background: rgba(0, 0, 0, .55); }
+.vid-play .i { width: 26px; height: 26px; fill: currentColor; stroke: none; margin-left: 3px; }
+.vid-tag { position: absolute; left: 10px; bottom: 10px; padding: 4px 9px; border-radius: 999px;
+  background: rgba(0, 0, 0, .6); font: 600 12px/1.2 var(--ui); }
+.vid:hover .vid-play, .vid:focus-visible .vid-play { background: var(--accent); }
+/* En la tira pequeña (120 px) basta el «play», más pequeño. */
+.media-row:not(.big) .vid-play { width: 38px; height: 38px; }
+.media-row:not(.big) .vid-play .i { width: 18px; height: 18px; }
+.media-row:not(.big) .vid-tag { display: none; }
+/* Si la miniatura no carga, el hueco del vídeo mantiene proporción de vídeo. */
+.media-row.big .vid:not(:has(img)) { width: 100%; aspect-ratio: 16 / 9; }
+
+.vid-badge { position: absolute; left: 8px; bottom: 8px; display: grid; place-items: center; min-width: 28px;
+  height: 28px; padding: 0 6px; border-radius: 999px; background: rgba(0, 0, 0, .6); color: #fff;
+  font: 700 11px/1 var(--ui); pointer-events: none; }
+.vid-badge .i { width: 14px; height: 14px; fill: currentColor; stroke: none; margin-left: 2px; }
 
 /* ficha lateral: acciones, el tuit, notas y etiquetas */
 .drawer .side { display: flex; flex-direction: column; background: var(--sunk); border-left: 1px solid var(--line); }

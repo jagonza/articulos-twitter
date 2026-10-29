@@ -29,9 +29,14 @@ const ICONS = {
   quote: '<path d="M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/><path d="M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/>',
   dots: '<path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
   trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
+  play: '<path d="M7 4v16l13 -8z"/>',
 };
 const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
 const isXDomain = (d) => /^(www\.)?(x|twitter)\.com$/.test(d || "");
+// X sirve las miniaturas de vídeo y de GIF desde rutas propias: la URL basta para saber qué es.
+const mediaKind = (url) => /\/tweet_video_thumb\//.test(url) ? "gif"
+  : /\/(amplify|ext_tw)_video_thumb\//.test(url) ? "video" : "photo";
+const statusUrl = (handle, id) => handle ? `https://x.com/${handle}/status/${id}` : `https://x.com/i/status/${id}`;
 const hue = (s) => [...String(s)].reduce((h, c) => (h * 31 + c.charCodeAt(0)) % 360, 7);
 // Los ids de X llevan la fecha dentro (snowflake).
 const tweetDate = (id) => {
@@ -227,12 +232,23 @@ function threadBlock(it) {
   return `<div class="o-thread"><h4>Hilo · ${it.thread.length} tuits</h4><ol class="thread">${it.thread.map((t) => `
     <li class="${t.id === it.id ? "current" : ""}">
       <div class="text">${linkify(t.text)}</div>
-      ${t.media?.length ? `<div class="media-row">${t.media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : ""}
+      ${t.media?.length ? `<div class="media-row">${t.media.map((m) => mediaItem(m, statusUrl(it.author_handle, t.id))).join("")}</div>` : ""}
     </li>`).join("")}</ol></div>`;
 }
 
-const mediaBig = (media) => media?.length
-  ? `<div class="media-row big">${media.map((m) => `<img src="${esc(m)}" alt="" loading="lazy" onerror="this.remove()">`).join("")}</div>` : "";
+// Un medio del tuit. Los vídeos y GIF no se guardan: se ve su miniatura con un «play» que abre el tuit en X.
+function mediaItem(url, href) {
+  const kind = mediaKind(url);
+  const img = `<img src="${esc(url)}" alt="" loading="lazy" onerror="this.remove()">`;
+  if (kind === "photo" || !href) return img;
+  const label = kind === "gif" ? "GIF" : "Vídeo";
+  return `<a class="vid" href="${esc(href)}" target="_blank" rel="noopener" onclick="event.stopPropagation()"
+    title="Ver el ${label.toLowerCase()} en X" aria-label="Ver el ${label.toLowerCase()} en X">${img}
+    <span class="vid-play">${icon("play")}</span><span class="vid-tag">${label} · ver en X</span></a>`;
+}
+
+const mediaBig = (media, href) => media?.length
+  ? `<div class="media-row big">${media.map((m) => mediaItem(m, href)).join("")}</div>` : "";
 
 // Texto de un tuit en párrafos. En los tuits de un hilo se quita la numeración («3/») y,
 // si la primera línea es corta y va sola, pasa a subtítulo («Auto mode = no more permission prompts»).
@@ -249,9 +265,9 @@ function tweetProse(text, inThread = false) {
 function threadFlow(it) {
   const [lead, ...rest] = it.thread;
   const n = it.thread.length;
-  return `<div class="lead">${tweetProse(lead.text)}</div>${mediaBig(lead.media)}
+  return `<div class="lead">${tweetProse(lead.text)}</div>${mediaBig(lead.media, statusUrl(it.author_handle, lead.id))}
     <ol class="thread-flow">${rest.map((t, i) => `<li><span class="num">${i + 2}/${n}</span>
-      <div class="prose">${tweetProse(t.text, true)}${mediaBig(t.media)}</div></li>`).join("")}</ol>`;
+      <div class="prose">${tweetProse(t.text, true)}${mediaBig(t.media, statusUrl(it.author_handle, t.id))}</div></li>`).join("")}</ol>`;
 }
 
 // Autor en la línea superior de la tarjeta: avatar pequeño y @usuario; al pulsarlo filtra por autor.
@@ -287,6 +303,12 @@ function cover(it, src = it.article_image) {
   const img = src ? `<img src="${esc(src)}" alt="" loading="lazy" onerror="this.remove()">` : "";
   return `<div class="cover" style="--h:${hue(it.domain || it.id)}">${img}<span>${esc((it.article_site || it.domain || it.author_name || it.author_handle || "?")[0].toUpperCase())}</span></div>`;
 }
+
+// Marca de vídeo/GIF sobre una miniatura que no es enlace (tarjetas y lista).
+const mediaBadge = (url) => {
+  const kind = mediaKind(url);
+  return kind === "photo" ? "" : `<span class="vid-badge">${kind === "gif" ? "GIF" : icon("play")}</span>`;
+};
 
 const whenOf = (it) => {
   if (it.article_status !== "ok") return fmtDate(tweetDate(it.id));
@@ -330,7 +352,8 @@ function cardTile(it, i) {
       ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}
       <p class="tweet-text">${linkify(it.tweet_text)}</p>
       ${linkList(it)}
-      ${it.media[0] ? `<img class="tw-media" loading="lazy" src="${esc(it.media[0])}" alt="" onerror="this.remove()">` : ""}`;
+      ${it.media[0] ? `<div class="tw-media ${mediaKind(it.media[0])}">
+        <img loading="lazy" src="${esc(it.media[0])}" alt="" onerror="this.remove()">${mediaBadge(it.media[0])}</div>` : ""}`;
   return `<article class="card tile ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
     ${hasArticle ? cover(it) : ""}
     <div class="body">
@@ -356,7 +379,7 @@ function cardRow(it, i) {
     : hasArticle ? esc(excerpt)
     : q ? `${icon("quote")} ${q.author_handle ? esc(`@${q.author_handle}: `) : ""}${esc(q.tweet_text)}` : "";
   return `<article class="card row ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
-    <div class="thumb">${hasArticle ? cover(it) : cover(it, it.media[0] || it.author_avatar)}</div>
+    <div class="thumb">${hasArticle ? cover(it) : cover(it, it.media[0] || it.author_avatar) + (it.media[0] ? mediaBadge(it.media[0]) : "")}</div>
     <div class="mid">
       <div class="site">${origin(it, fromX)}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
       <div class="ttl">${esc(hasArticle ? title : unX(it.tweet_text))}</div>
@@ -495,7 +518,7 @@ async function openItem(it) {
           ${avatar(full)}
           <div class="a-who">${who}<span>${handle}${esc(fmtDate(tweetDate(full.id)))}</span></div>
         </div>
-        ${full.thread?.length ? threadFlow(full) : `<div class="lead ${full.tweet_text.length > 280 ? "long" : ""}">${tweetProse(full.tweet_text)}</div>${linkList(full)}${mediaBig(full.media)}`}
+        ${full.thread?.length ? threadFlow(full) : `<div class="lead ${full.tweet_text.length > 280 ? "long" : ""}">${tweetProse(full.tweet_text)}</div>${linkList(full)}${mediaBig(full.media, full.tweet_url)}`}
         ${quoteBlock(full.quoted)}`}
       ${paras ? `<div class="article">${paras}</div>` : ""}
       ${full.quoted_by?.length ? `<div class="cited"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
@@ -524,7 +547,7 @@ async function openItem(it) {
           <div class="origin">
             <div class="o-who">${avatar(full)}<div class="o-name">${who}<span>${handle}${fmtDate(tweetDate(full.id))}</span></div></div>
             <div class="o-text">${linkify(full.tweet_text)}</div>
-            ${full.media.length ? `<div class="media-row">${full.media.map((m) => `<img src="${esc(m)}" alt="" onerror="this.remove()">`).join("")}</div>` : ""}
+            ${full.media.length ? `<div class="media-row">${full.media.map((m) => mediaItem(m, full.tweet_url)).join("")}</div>` : ""}
             ${quoteBlock(full.quoted)}
             ${threadBlock(full)}
           </div>

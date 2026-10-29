@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS items (
     urls            TEXT NOT NULL DEFAULT '[]',
     media           TEXT NOT NULL DEFAULT '[]',
     article_url     TEXT,
-    article_status  TEXT NOT NULL DEFAULT 'none',  -- none | pending | ok | failed
+    article_status  TEXT NOT NULL DEFAULT 'none',  -- none | ok (sólo los Artículos de X)
     article_title   TEXT,
     article_author  TEXT,
     article_site    TEXT,

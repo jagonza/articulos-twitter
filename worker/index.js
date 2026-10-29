@@ -2,10 +2,6 @@
 //
 // Secretos (Settings → Variables and secrets en el panel de Cloudflare):
 //   APP_PASSWORD  contraseña para entrar en la web
-//   API_TOKEN     token que usa el extractor de GitHub Actions
-// Opcionales, para el botón «Extraer ahora»:
-//   GITHUB_TOKEN  token de GitHub con permiso Actions: write sobre el repo
-//   GITHUB_REPO   p. ej. "jagonza/articulos-twitter"
 
 const SESSION_DAYS = 60;
 const COOKIE = "ts_session";
@@ -35,8 +31,6 @@ async function makeSession(env) {
 }
 
 async function isAuthed(req, env) {
-  const auth = req.headers.get("Authorization") || "";
-  if (env.API_TOKEN && auth.startsWith("Bearer ") && safeEqual(auth.slice(7), env.API_TOKEN)) return true;
   const m = (req.headers.get("Cookie") || "").match(new RegExp(`${COOKIE}=([\\d]+)\\.([0-9a-f]+)`));
   if (!m || Number(m[1]) < Date.now()) return false;
   return safeEqual(m[2], await hmac(env.APP_PASSWORD, `session:${m[1]}`));
@@ -66,7 +60,7 @@ const VIEWS = {
   favorites: "i.favorite = 1",
   unread: "i.is_read = 0 AND i.archived = 0 AND i.article_status = 'ok'",
   articles: "i.article_status = 'ok' AND i.archived = 0",
-  tweets: "i.article_status IN ('none', 'failed') AND i.archived = 0",
+  tweets: "i.article_status != 'ok' AND i.archived = 0",
   notes: "i.note != ''",
   archived: "i.archived = 1",
   // Guardados o me gusta que siguen en X: ni quitados ni marcados para quitar.
@@ -114,7 +108,6 @@ async function listItems(db, p) {
     extra = ", snippet(items_fts, -1, char(1), char(2), '…', 24) AS snippet";
   }
   if (p.get("tag")) { where.push("EXISTS (SELECT 1 FROM json_each(i.tags) WHERE value = ?)"); params.push(p.get("tag")); }
-  if (p.get("domain")) { where.push("i.domain = ?"); params.push(p.get("domain")); }
   if (p.get("source")) { where.push("(',' || i.sources || ',') LIKE ?"); params.push(`%,${p.get("source")},%`); }
   if (p.get("author")) { where.push("i.author_handle = ?"); params.push(p.get("author")); }
   const sort = p.get("sort") || "recent";
@@ -133,9 +126,10 @@ async function listItems(db, p) {
 // ------------------------------------------------------------------ importación
 
 // Los «Artículos» de X vienen ya en la exportación (título, texto, portada): se guardan como artículo.
+// Los enlaces a otras webs no se extraen: el tuit se queda como tuit y el enlace, en su texto.
 // Si ya estaba guardado de X y llega un texto más largo o con formato (antes sólo se exportaba la entradilla o
 // el texto plano), se sustituye.
-const MAX_TEXT = 60000; // igual que el extractor, para no acercarse a los 500 MB de D1
+const MAX_TEXT = 60000; // para no acercarse a los 500 MB de D1
 const XA = { article_url: "xa_url", article_title: "xa_title", article_excerpt: "xa_excerpt", article_text: "xa_text",
   article_image: "xa_image", article_words: "xa_words" };
 const XA_WINS = `excluded.article_site = 'X' AND (items.article_status != 'ok'
@@ -151,8 +145,7 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
          json_extract(value, '$.tweet_created'), json_extract(value, '$.tweet_url'),
          coalesce(json_extract(value, '$.urls'), '[]'), coalesce(json_extract(value, '$.media'), '[]'),
          json_extract(value, '$.quoted_id'), json_extract(value, '$.thread'), json_extract(value, '$.thread_text'),
-         CASE WHEN json_extract(value, '$.xa_url') IS NOT NULL THEN 'ok'
-              WHEN json_array_length(coalesce(json_extract(value, '$.urls'), '[]')) > 0 THEN 'pending' ELSE 'none' END,
+         CASE WHEN json_extract(value, '$.xa_url') IS NOT NULL THEN 'ok' ELSE 'none' END,
          ${Object.values(XA).map((k) => `json_extract(value, '$.${k}')`).join(", ")},
          CASE WHEN json_extract(value, '$.xa_url') IS NOT NULL THEN 'X' END,
          CASE WHEN json_extract(value, '$.xa_url') IS NOT NULL THEN 'x.com' END
@@ -177,8 +170,7 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
     ${Object.keys(XA).map((c) => xaSet(c, `excluded.${c}`)).join(",\n    ")},
     domain = CASE WHEN ${XA_WINS} THEN 'x.com' ELSE items.domain END,
     article_site = CASE WHEN ${XA_WINS} THEN 'X' ELSE items.article_site END,
-    article_status = CASE WHEN excluded.article_site = 'X' THEN 'ok'
-                          WHEN items.urls = '[]' AND excluded.urls != '[]' THEN 'pending' ELSE items.article_status END,
+    article_status = CASE WHEN excluded.article_site = 'X' THEN 'ok' ELSE items.article_status END,
     urls = CASE WHEN items.urls = '[]' THEN excluded.urls ELSE items.urls END`;
 
 const SOURCES = new Set(["like", "bookmark", "quoted"]);
@@ -234,84 +226,31 @@ async function importItems(db, items) {
   return { found: items.length, added: clean.length - updated, updated };
 }
 
-// ------------------------------------------------------------------ extracción (la hace GitHub Actions)
-
-const ARTICLE_FIELDS = ["article_url", "article_status", "article_title", "article_author", "article_site", "article_date",
-  "article_image", "article_excerpt", "article_text", "article_words", "article_error", "domain"];
-
-async function saveArticles(db, results) {
-  const rows = results.filter((r) => r && r.id).map((r) => ({ ...r, id: String(r.id), tags: JSON.stringify(r.tags || []) }));
-  if (!rows.length) return { saved: 0 };
-  // Si al volver a extraer la web falla, se conserva el artículo que ya teníamos.
-  const keep = `json_extract(j.value, '$.article_status') = 'failed' AND items.article_text IS NOT NULL AND items.article_text != ''`;
-  const kept = { article_status: "'ok'" };
-  const sets = ARTICLE_FIELDS.map((f) => `${f} = CASE WHEN ${keep} THEN ${kept[f] || `items.${f}`} ELSE json_extract(j.value, '$.${f}') END`).join(", ");
-  const update = `UPDATE items SET ${sets},
-        tags = (SELECT json_group_array(value) FROM (SELECT value FROM json_each(items.tags) UNION SELECT value FROM json_each(json_extract(j.value, '$.tags')))),
-        updated_at = datetime('now')
-      FROM json_each(?1) AS j WHERE items.id = json_extract(j.value, '$.id')`;
-  await db.batch(bySize(rows).map((group) => db.prepare(update).bind(group)));
-  return { saved: rows.length };
-}
-
-const GH_ERRORS = {
-  401: "GitHub no acepta el token GITHUB_TOKEN (¿caducado o mal copiado?)",
-  403: "El token GITHUB_TOKEN no tiene permiso «Actions: Read and write» sobre el repo",
-  404: "GitHub no encuentra el repo o el workflow: revisa GITHUB_REPO y que el token tenga acceso al repo",
-  422: "GitHub no encuentra la rama a ejecutar (GITHUB_REF)",
-};
-
-const github = (env, path, opts = {}) => fetch(`https://api.github.com/repos/${env.GITHUB_REPO}/actions/workflows/extract.yml${path}`, {
-  ...opts,
-  headers: { Authorization: `Bearer ${env.GITHUB_TOKEN}`, Accept: "application/vnd.github+json", "User-Agent": "tweetshelf" },
-});
-
-async function triggerExtraction(env) {
-  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return { triggered: false, reason: "not_configured" };
-  const r = await github(env, "/dispatches", { method: "POST", body: JSON.stringify({ ref: env.GITHUB_REF || "main" }) });
-  if (r.ok) return { triggered: true };
-  return { triggered: false, reason: "github_error", status: r.status, message: GH_ERRORS[r.status] || `GitHub respondió ${r.status}` };
-}
-
-// Última ejecución del extractor en GitHub Actions, para enseñar en qué va.
-async function extractionStatus(env) {
-  if (!env.GITHUB_TOKEN || !env.GITHUB_REPO) return { configured: false };
-  const r = await github(env, "/runs?per_page=1");
-  if (!r.ok) return { configured: true, error: GH_ERRORS[r.status] || `GitHub respondió ${r.status}` };
-  const run = (await r.json()).workflow_runs?.[0];
-  return { configured: true, run: run && {
-    status: run.status, conclusion: run.conclusion, event: run.event,
-    created_at: run.created_at, updated_at: run.updated_at, url: run.html_url,
-  } };
-}
-
 // ------------------------------------------------------------------ resto de la API
 
 async function stats(db) {
-  const [counts, tags, domains, authors] = await db.batch([
+  const [counts, tags, authors] = await db.batch([
     db.prepare(`SELECT
         SUM(archived = 0) AS "all", SUM(favorite = 1) AS favorites,
         SUM(is_read = 0 AND archived = 0 AND article_status = 'ok') AS unread,
         SUM(article_status = 'ok' AND archived = 0) AS articles,
-        SUM(article_status IN ('none', 'failed') AND archived = 0) AS tweets,
+        SUM(article_status != 'ok' AND archived = 0) AS tweets,
         SUM(note != '') AS notes, SUM(archived = 1) AS archived, SUM(x_status = 'remove') AS x_remove,
         SUM(x_status IS NULL AND (instr(sources, 'bookmark') > 0 OR instr(sources, 'like') > 0)) AS x_keep,
         SUM(instr(sources, 'bookmark') > 0 AND x_status IS NOT 'removed') AS x_bookmarks,
         SUM(instr(sources, 'like') > 0 AND x_status IS NOT 'removed') AS x_likes,
-        SUM(CASE WHEN is_read = 0 AND article_status = 'ok' THEN coalesce(article_words, 0) ELSE 0 END) AS words_unread,
-        SUM(article_status = 'pending') AS pending, SUM(article_status = 'failed') AS failed
+        SUM(CASE WHEN is_read = 0 AND article_status = 'ok' THEN coalesce(article_words, 0) ELSE 0 END) AS words_unread
       FROM items`),
     db.prepare("SELECT j.value AS tag, COUNT(*) AS n FROM items, json_each(items.tags) j GROUP BY j.value ORDER BY n DESC, tag LIMIT 60"),
-    db.prepare("SELECT domain, COUNT(*) AS n FROM items WHERE domain IS NOT NULL GROUP BY domain ORDER BY n DESC LIMIT 25"),
     db.prepare(`SELECT author_handle AS handle, MAX(author_name) AS name, MAX(author_avatar) AS avatar, COUNT(*) AS n
       FROM items WHERE author_handle IS NOT NULL GROUP BY author_handle ORDER BY n DESC LIMIT 15`),
   ]);
   const c = counts.results[0];
-  const { words_unread, pending, failed, x_bookmarks, x_likes, ...views } = c;
+  const { words_unread, x_bookmarks, x_likes, ...views } = c;
   for (const k in views) views[k] = views[k] || 0;
-  return { counts: views, words_unread: words_unread || 0, pending: pending || 0, failed: failed || 0,
+  return { counts: views, words_unread: words_unread || 0,
     x: { bookmarks: x_bookmarks || 0, likes: x_likes || 0, marked: views.x_remove },
-    tags: tags.results, domains: domains.results, authors: authors.results };
+    tags: tags.results, authors: authors.results };
 }
 
 async function patchItem(db, id, body) {
@@ -390,28 +329,12 @@ async function api(req, env, url) {
     if (!Array.isArray(body.items) || body.items.length > 1000) return err(400, "Envía hasta 1000 elementos por petición");
     return json(await importItems(db, body.items));
   }
-  if (path === "/api/progress") {
-    const r = await db.prepare("SELECT SUM(article_status = 'pending') AS pending, SUM(article_status = 'failed') AS failed FROM items").first();
-    return json({ pending: r.pending || 0, failed: r.failed || 0 });
-  }
-  if (path === "/api/extract-now" && method === "POST") return json(await triggerExtraction(env));
-  if (path === "/api/extract-status") return json(await extractionStatus(env));
-  if (path === "/api/retry-failed" && method === "POST") {
-    const r = await db.prepare("UPDATE items SET article_status = 'pending' WHERE article_status = 'failed'").run();
-    return json({ queued: r.meta.changes, ...(await triggerExtraction(env)) });
-  }
-  if (path === "/api/pending" && method === "GET") {
-    const limit = Math.min(Number(url.searchParams.get("limit")) || 30, 100);
-    const { results } = await db.prepare("SELECT id, urls FROM items WHERE article_status = 'pending' LIMIT ?").bind(limit).all();
-    return json(results.map((r) => ({ id: r.id, urls: JSON.parse(r.urls) })));
-  }
   if (path === "/api/x-cleanup" && method === "GET") return json(await xCleanup(db, url.searchParams.get("scope")));
   if (path === "/api/x-cleanup/done" && method === "POST") {
     const ids = (body.ids || []).filter((i) => /^\d+$/.test(String(i))).map(String);
     const r = await db.prepare("UPDATE items SET x_status = 'removed' WHERE id IN (SELECT value FROM json_each(?1))").bind(JSON.stringify(ids)).run();
     return json({ updated: r.meta.changes });
   }
-  if (path === "/api/articles" && method === "POST") return json(await saveArticles(db, body.results || []));
   if (path === "/api/export.json") {
     const { results } = await db.prepare("SELECT * FROM items ORDER BY CAST(id AS INTEGER) DESC").all();
     return json(results.map(toItem), 200, { "Content-Disposition": 'attachment; filename="tweetshelf.json"' });
@@ -422,14 +345,10 @@ async function api(req, env, url) {
     return new Response(exportMarkdown(results.map(toItem)), { headers: { "Content-Type": "text/markdown; charset=utf-8" } });
   }
 
-  const m = path.match(/^\/api\/items\/(\d+)(\/refetch|\/keep-quoted)?$/);
+  const m = path.match(/^\/api\/items\/(\d+)(\/keep-quoted)?$/);
   if (m) {
     const id = m[1];
     if (m[2] === "/keep-quoted" && method === "POST") return keepQuoted(db, id);
-    if (m[2] && method === "POST") {
-      await db.prepare("UPDATE items SET article_status = 'pending' WHERE id = ? AND urls != '[]'").bind(id).run();
-      return json({ ok: true, ...(await triggerExtraction(env)) });
-    }
     if (method === "GET") {
       const [row, by] = await db.batch([
         db.prepare(`SELECT i.*, ${QUOTED_COL} FROM items i ${QUOTED_JOIN} WHERE i.id = ?`).bind(id),

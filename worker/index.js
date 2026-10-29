@@ -99,12 +99,11 @@ async function listItems(db, p) {
   const q = (p.get("q") || "").trim();
   const where = [VIEWS[p.get("view")] || VIEWS.all];
   const params = [];
-  let join = "", extra = "";
+  let join = "";
   if (q) {
     join = "JOIN items_fts f ON f.rowid = i.pk";
     where.push("items_fts MATCH ?");
     params.push(ftsQuery(q));
-    extra = ", snippet(items_fts, -1, char(1), char(2), '…', 24) AS snippet";
   }
   if (p.get("tag")) { where.push("EXISTS (SELECT 1 FROM json_each(i.tags) WHERE value = ?)"); params.push(p.get("tag")); }
   if (p.get("source")) { where.push("(',' || i.sources || ',') LIKE ?"); params.push(`%,${p.get("source")},%`); }
@@ -116,7 +115,7 @@ async function listItems(db, p) {
   const w = where.join(" AND ");
   const [count, rows] = await db.batch([
     db.prepare(`SELECT COUNT(*) AS n FROM items i ${join} WHERE ${w}`).bind(...params),
-    db.prepare(`SELECT ${LIST_COLS}, ${QUOTED_COL} ${extra} FROM items i ${join} ${QUOTED_JOIN} WHERE ${w} ORDER BY ${order} LIMIT ? OFFSET ?`)
+    db.prepare(`SELECT ${LIST_COLS}, ${QUOTED_COL} FROM items i ${join} ${QUOTED_JOIN} WHERE ${w} ORDER BY ${order} LIMIT ? OFFSET ?`)
       .bind(...params, limit, offset),
   ]);
   return { total: count.results[0].n, items: rows.results.map(toItem) };

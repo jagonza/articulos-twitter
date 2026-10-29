@@ -563,6 +563,10 @@ async function openItem(it) {
   d.setAttribute("aria-hidden", "false");
   document.documentElement.classList.add("reading");
   $("#scrim").classList.remove("hidden");
+  // Una sola entrada en el historial por lectura: «atrás» siempre vuelve a la portada.
+  const url = `#/item/${encodeURIComponent(full.id)}`;
+  if (history.state?.reader) history.replaceState({ reader: full.id }, "", url);
+  else history.pushState({ reader: full.id }, "", url);
   const content = $(".content", d);
   [content.scrollTop, $(".side", d).scrollTop] = keep;
   if (!wasOpen || !same) content.focus({ preventScroll: true });
@@ -582,13 +586,35 @@ async function openItem(it) {
   });
 }
 
-function closeDrawer() {
+function hideDrawer() {
   const d = $("#drawer");
   d.classList.remove("open");
   d.setAttribute("aria-hidden", "true");
   document.documentElement.classList.remove("reading");
   $("#scrim").classList.add("hidden");
   state.open = null;
+}
+
+// Cerrar es «ir atrás»: así la X, Esc y el gesto del móvil dejan el historial igual.
+function closeDrawer() {
+  if (history.state?.reader) history.back();
+  else hideDrawer();
+}
+
+// Atrás/adelante del navegador: el historial manda sobre el lector.
+addEventListener("popstate", () => {
+  const id = history.state?.reader;
+  if (!id && state.open) hideDrawer();
+  else if (id && state.open?.id !== id) openReader(id);
+});
+
+async function openReader(id) {
+  try { await openItem({ id }); }
+  catch {
+    toast("Ese elemento ya no está en tu estantería");
+    if (history.state?.reader) history.replaceState(null, "", location.pathname + location.search);
+    hideDrawer();
+  }
 }
 
 function syncItem(full) {
@@ -775,3 +801,11 @@ function toast(msg) {
 }
 
 refresh();
+// Recarga con el lector abierto: la entrada ya existe y se reutiliza. Enlace directo: se deja la portada
+// debajo (sin hash) y se abre encima, para que «atrás» no saque de Tweetshelf.
+const deep = location.hash.match(/^#\/item\/([^/]+)$/);
+if (history.state?.reader) openReader(history.state.reader);
+else if (deep) {
+  history.replaceState(null, "", location.pathname + location.search);
+  openReader(decodeURIComponent(deep[1]));
+}

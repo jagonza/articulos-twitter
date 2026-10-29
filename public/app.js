@@ -24,8 +24,8 @@ const ICONS = {
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   archive: '<path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><path d="M10 12h4"/>',
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
+  link: '<path d="M9 15l6 -6"/><path d="M11 6l.463 -.536a5 5 0 0 1 7.071 7.072l-.534 .464"/><path d="M13 18l-.397 .534a5.068 5.068 0 0 1 -7.127 0a4.972 4.972 0 0 1 0 -7.071l.524 -.463"/>',
   external: '<path d="M12 6h-6a2 2 0 0 0 -2 2v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-6"/><path d="M11 13l9 -9"/><path d="M15 4h5v5"/>',
-  refresh: '<path d="M20 11a8.1 8.1 0 0 0 -15.5 -2m-.5 -4v4h4"/><path d="M4 13a8.1 8.1 0 0 0 15.5 2m.5 4v-4h-4"/>',
   quote: '<path d="M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/><path d="M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/>',
   dots: '<path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
   trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
@@ -52,12 +52,12 @@ const xIcon = (it) => (it.sources.includes("bookmark") ? "bookmarkOff" : "heartO
 
 // Tarjetas o lista: la última que eligió la persona (si el navegador deja guardarla).
 const loadLayout = () => { try { return localStorage.getItem("layout") === "list" ? "list" : "cards"; } catch { return "cards"; } };
-const state = { view: "all", q: "", tag: "", domain: "", author: "", sort: "recent", layout: loadLayout(), items: [], total: 0, focus: -1, open: null };
+const state = { view: "all", q: "", tag: "", author: "", sort: "recent", layout: loadLayout(), items: [], total: 0, focus: -1, open: null };
 
 // ------------------------------------------------------------------ carga
 
 async function load(append = false) {
-  const p = new URLSearchParams({ view: state.view, q: state.q, tag: state.tag, domain: state.domain,
+  const p = new URLSearchParams({ view: state.view, q: state.q, tag: state.tag,
     author: state.author, sort: state.sort, offset: append ? state.items.length : 0, limit: 60 });
   const data = await api(`/api/items?${p}`);
   state.items = append ? state.items.concat(data.items) : data.items;
@@ -73,13 +73,9 @@ async function loadStats() {
   $("#tagList").innerHTML = s.tags.length ? s.tags.map((t) =>
     `<button class="chip ${state.tag === t.tag ? "active" : ""}" data-tag="${esc(t.tag)}">#${esc(t.tag)} <span class="muted">${t.n}</span></button>`).join("")
     : `<span class="muted small">Añade etiquetas desde el lector</span>`;
-  $("#domainList").innerHTML = s.domains.map((d) =>
-    `<li data-domain="${esc(d.domain)}" class="${state.domain === d.domain ? "active" : ""}"><img src="${favicon(d.domain)}" alt=""><span class="label">${esc(d.domain)}</span><span class="n">${d.n}</span></li>`).join("");
   $("#authorList").innerHTML = s.authors.map((a) =>
     `<li data-author="${esc(a.handle)}" class="${state.author === a.handle ? "active" : ""}">${a.avatar ? `<img src="${esc(a.avatar)}" alt="" style="border-radius:50%">` : ""}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></li>`).join("");
   $("#empty").classList.toggle("hidden", s.counts.all + s.counts.archived > 0);
-  $("#retryBtn").classList.toggle("hidden", !s.failed);
-  $("#retryBtn").textContent = `↻ Reintentar ${s.failed} fallido${s.failed === 1 ? "" : "s"} · `;
   state.stats = s;
 }
 
@@ -113,10 +109,23 @@ function quoteBlock(q, compact = false) {
 }
 
 // X manda el texto de los tuits con &amp;, &lt; y &gt; ya escapados.
-const unX = (s) => String(s ?? "").replace(/&(amp|lt|gt);/g, (_, e) => ({ amp: "&", lt: "<", gt: ">" }[e]));
+// Algunas exportaciones parten la dirección tras «https://» en otra línea: se vuelve a unir.
+const unX = (s) => String(s ?? "").replace(/&(amp|lt|gt);/g, (_, e) => ({ amp: "&", lt: "<", gt: ">" }[e]))
+  .replace(/(https?:\/\/)\s*\n\s*/g, "$1");
 
 function linkify(text) {
   return esc(unX(text)).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${u.replace(/^https?:\/\//, "").slice(0, 40)}${u.length > 48 ? "…" : ""}</a>`);
+}
+
+// Enlaces del tuit que no se ven ya en su texto (en importaciones antiguas el texto no siempre los trae).
+// No se descargan: son sólo enlaces a la web.
+const bareUrl = (u) => u.replace(/^https?:\/\/(www\.)?/i, "").replace(/\/$/, "");
+function linkList(it) {
+  const text = unX(it.tweet_text).toLowerCase().replace(/https?:\/\/(www\.)?/g, "");
+  const links = [...new Set(it.urls || [])].filter((u) => safeUrl(u) && !isXDomain(bareUrl(u).split(/[/?#]/)[0].toLowerCase())
+    && !text.includes(bareUrl(u).toLowerCase()));
+  return links.length ? `<div class="links">${links.map((u) => `<a href="${esc(u)}" target="_blank" rel="noopener"
+    onclick="event.stopPropagation()">${icon("link")}<span>${esc(bareUrl(u).slice(0, 60))}${bareUrl(u).length > 60 ? "…" : ""}</span></a>`).join("")}</div>` : "";
 }
 
 // ------------------------------------------------------------------ Markdown del lector
@@ -285,9 +294,6 @@ const whenOf = (it) => {
   return mins ? `${mins} min` : "";
 };
 
-const statusOf = (it) => it.article_status === "pending" ? "⏳ extrayendo…"
-  : it.article_status === "failed" ? `<span class="status-fail" title="${esc(it.article_error)}">⚠︎ no se pudo leer</span>` : "";
-
 // Acciones de la tarjeta: flotan sobre la portada al pasar el ratón, y en el móvil van al pie.
 function acts(it) {
   return `<div class="acts">
@@ -323,6 +329,7 @@ function cardTile(it, i) {
         <span>${[it.author_handle && `@${esc(it.author_handle)}`, when, it.thread_count && `Hilo de ${it.thread_count}`].filter(Boolean).join(" · ")}</span></div></div>
       ${it.snippet ? `<p class="snippet">${marked(it.snippet)}</p>` : ""}
       <p class="tweet-text">${linkify(it.tweet_text)}</p>
+      ${linkList(it)}
       ${it.media[0] ? `<img class="tw-media" loading="lazy" src="${esc(it.media[0])}" alt="" onerror="this.remove()">` : ""}`;
   return `<article class="card tile ${hasArticle ? "" : "tw"} ${it.is_read ? "read" : ""} ${i === state.focus ? "focused" : ""}" data-i="${i}">
     ${hasArticle ? cover(it) : ""}
@@ -330,7 +337,6 @@ function cardTile(it, i) {
       ${body}
       ${quoteBlock(it.quoted, true)}
       <div class="meta">
-        ${statusOf(it)}
         ${it.tags.slice(0, 3).map((t) => `<span class="chip" data-tag="${esc(t)}">${esc(t)}</span>`).join("")}
         ${it.note ? `<span class="note" title="${esc(it.note)}">Nota: ${esc(it.note)}</span>` : ""}
         ${it.favorite ? icon("star") : ""}
@@ -405,7 +411,7 @@ function renderGrid() {
   placeCards(true);
   const filters = [
     state.q && ["q", `🔎 “${state.q}”`], state.tag && ["tag", `#${state.tag}`],
-    state.domain && ["domain", state.domain], state.author && ["author", `@${state.author}`],
+    state.author && ["author", `@${state.author}`],
   ].filter(Boolean);
   $("#activeFilters").innerHTML = filters.map(([k, l]) => `<button class="chip active" data-clear="${k}">${esc(l)}<span class="x">✕</span></button>`).join("");
   const words = state.stats?.words_unread;
@@ -489,10 +495,8 @@ async function openItem(it) {
           ${avatar(full)}
           <div class="a-who">${who}<span>${handle}${esc(fmtDate(tweetDate(full.id)))}</span></div>
         </div>
-        ${full.thread?.length ? threadFlow(full) : `<div class="lead ${full.tweet_text.length > 280 ? "long" : ""}">${tweetProse(full.tweet_text)}</div>${mediaBig(full.media)}`}
+        ${full.thread?.length ? threadFlow(full) : `<div class="lead ${full.tweet_text.length > 280 ? "long" : ""}">${tweetProse(full.tweet_text)}</div>${linkList(full)}${mediaBig(full.media)}`}
         ${quoteBlock(full.quoted)}`}
-      ${full.article_status === "failed" ? `<p class="notice fail">No pude extraer el artículo: ${esc(full.article_error)}</p>` : ""}
-      ${full.article_status === "pending" ? `<p class="notice">⏳ Extrayendo el artículo…</p>` : ""}
       ${paras ? `<div class="article">${paras}</div>` : ""}
       ${full.quoted_by?.length ? `<div class="cited"><h4>Citado por</h4>${full.quoted_by.map((q) => quoteBlock(q)).join("")}</div>` : ""}
       </article>
@@ -512,7 +516,6 @@ async function openItem(it) {
             full.x_status === "remove" ? "Se quitará de tus " + (xIcon(full) === "bookmarkOff" ? "guardados" : "me gusta") + " de X con el script de limpieza (x)" : "Marcar para quitar de X (x)") : ""}
           ${verEnX}
           ${keepQuoted}
-          ${full.urls.length ? `<button class="btn wide" data-d="refetch">${icon("refresh")}<span>Volver a extraer el artículo</span></button>` : ""}
           <button class="btn wide danger" data-d="delete">${icon("trash")}<span>Eliminar de la estantería</span></button>
         </div>
 
@@ -609,86 +612,6 @@ async function uploadFiles(files) {
     show();
   }
   await refresh();
-  trackExtraction(await api("/api/extract-now", { method: "POST" }).catch(() => ({})));
-}
-
-// La extracción de artículos la hace GitHub Actions cada 3 horas; «extraer ahora» lanza una pasada
-// al momento y aquí seguimos su ejecución para que se vea en qué va.
-const extraction = { since: 0, notice: "" };
-const plural = (n, s) => `${n} ${s}${n === 1 ? "" : "s"}`;
-
-async function extractNow() {
-  extraction.notice = "⏳ Lanzando la extracción…";
-  extraction.since = 0;
-  pollProgress(false);
-  const r = await api("/api/extract-now", { method: "POST" })
-    .catch((e) => ({ triggered: false, reason: "github_error", message: e.message }));
-  trackExtraction(r);
-}
-window.extractNow = extractNow;
-
-// Recibe la respuesta de cualquier llamada que dispara el extractor y deja el aviso adecuado.
-function trackExtraction(r) {
-  if (r.triggered) {
-    extraction.since = Date.now();
-    extraction.notice = "";
-  } else if (r.reason === "not_configured") {
-    extraction.notice = `⚠️ «Extraer ahora» no está configurado: falta el secreto <code>GITHUB_TOKEN</code> (y <code>GITHUB_REPO</code>) en el Worker.
-      Los artículos se extraerán solos en la próxima pasada automática (cada 3 h).`;
-  } else if (r.reason === "github_error") {
-    extraction.notice = `❌ No se pudo lanzar la extracción: ${esc(r.message)}.`;
-  }
-  pollProgress();
-}
-
-let pollTimer;
-async function pollProgress(refreshStatus = true) {
-  clearTimeout(pollTimer);
-  const p = await api("/api/progress");
-  const running = extraction.since > 0;
-  const parts = [];
-  let next = 30000;
-
-  if (running && refreshStatus) {
-    const s = await api("/api/extract-status").catch((e) => ({ error: e.message }));
-    // La ejecución que lanzamos es la primera creada después del clic (con margen por relojes desfasados).
-    const run = s.run && Date.parse(s.run.created_at) > extraction.since - 60000 ? s.run : null;
-    const log = run ? ` · <a href="${esc(run.url)}" target="_blank" rel="noopener">ver en GitHub</a>` : "";
-    next = 5000;
-    if (s.error) {
-      extraction.since = 0;
-      extraction.notice = `❌ No se puede consultar la extracción: ${esc(s.error)}.`;
-    } else if (!run) {
-      if (Date.now() - extraction.since > 5 * 60000) {
-        extraction.since = 0;
-        extraction.notice = "⚠️ GitHub Actions no ha arrancado la extracción tras 5 minutos. Mira la pestaña Actions del repo.";
-      } else parts.push("🚀 Extracción lanzada. Esperando a que GitHub Actions la arranque (suele tardar menos de un minuto)…");
-    } else if (run.status !== "completed") {
-      parts.push(run.status === "in_progress"
-        ? `⚙️ Extrayendo artículos… quedan ${p.pending}${log}`
-        : `⏳ En cola en GitHub Actions…${log}`);
-    } else {
-      extraction.since = 0;
-      extraction.notice = run.conclusion === "success"
-        ? `✅ Extracción terminada${p.failed ? ` · ${plural(p.failed, "enlace")} sin artículo` : ""}${log}`
-        : `❌ La extracción falló en GitHub Actions${log}. Si es la primera vez, revisa que el repo tenga los secretos
-           <code>TWEETSHELF_URL</code> y <code>TWEETSHELF_TOKEN</code>.`;
-      refresh();
-    }
-  }
-
-  if (extraction.notice) parts.push(extraction.notice);
-  if (p.pending && !extraction.since) {
-    parts.push(`⏳ ${plural(p.pending, "artículo")} pendiente${p.pending === 1 ? "" : "s"} de extraer
-      · <a href="#" onclick="extractNow(); return false">extraer ahora</a>`);
-  }
-  $("#progress").classList.toggle("hidden", !parts.length);
-  $("#progressText").innerHTML = parts.join("<br>");
-
-  const before = state.stats?.pending;
-  if (before !== undefined && before !== p.pending) refresh();
-  if (state.stats) state.stats.pending = p.pending;
-  if (p.pending || extraction.since) pollTimer = setTimeout(pollProgress, next);
 }
 
 // ------------------------------------------------------------------ eventos
@@ -714,8 +637,6 @@ document.addEventListener("click", async (e) => {
   if (clear) { state[clear.dataset.clear] = ""; if (clear.dataset.clear === "q") $("#q").value = ""; return refresh(); }
   const tag = t.closest("[data-tag]");
   if (tag) { e.stopPropagation(); state.tag = state.tag === tag.dataset.tag ? "" : tag.dataset.tag; return refresh(); }
-  const dom = t.closest("[data-domain]");
-  if (dom) { state.domain = state.domain === dom.dataset.domain ? "" : dom.dataset.domain; return refresh(); }
   const au = t.closest("[data-author]");
   if (au) { if (state.open) closeDrawer(); state.author = state.author === au.dataset.author ? "" : au.dataset.author; return refresh(); }
 
@@ -749,7 +670,6 @@ document.addEventListener("click", async (e) => {
       return openItem({ id: r.kept });
     }
     if (k === "x_status") { await toggleXRemove(it); syncItem(it); return openItem(it); }
-    if (k === "refetch") { trackExtraction(await api(`/api/items/${it.id}/refetch`, { method: "POST" })); toast("Reextrayendo…"); return openItem(it); }
     await patch(it, { [k]: !it[k] }); syncItem(it); loadStats(); return openItem(it);
   }
   const rm = t.closest("[data-rm]");
@@ -768,12 +688,6 @@ $("#copyScriptBtn").onclick = async (e) => {
   } catch {
     window.open("/export_x.js", "_blank"); // sin permiso de portapapeles: que lo copie a mano
   }
-};
-$("#retryBtn").onclick = async (e) => {
-  e.preventDefault();
-  const r = await api("/api/retry-failed", { method: "POST" });
-  toast(`${r.queued} en cola para reintentar`);
-  refresh(); trackExtraction(r);
 };
 $("#importBtn").onclick = openImport;
 $("#moreBtn").onclick = () => load(true);
@@ -895,4 +809,4 @@ function toast(msg) {
   clearTimeout(t._h); t._h = setTimeout(() => t.classList.add("hidden"), 1800);
 }
 
-refresh().then(pollProgress);
+refresh();

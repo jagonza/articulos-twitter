@@ -1,8 +1,16 @@
 # Tweetshelf: instrucciones para trabajar en el repo
 
-Tweetshelf es la estantería de favoritos de X de Javier: importa guardados y me gusta, extrae los artículos
-enlazados y los deja leer, buscar, marcar y anotar. Todo vive gratis en Cloudflare (Worker + D1) y la
-extracción corre en GitHub Actions. El README explica el despliegue; aquí van las reglas para cambiar código.
+Tweetshelf es la estantería de favoritos de X de Javier: importa guardados y me gusta y los deja leer, buscar,
+marcar y anotar. Todo vive gratis en Cloudflare (Worker + D1). El README explica el despliegue; aquí van las
+reglas para cambiar código.
+
+## Tipos de contenido
+
+- **Tuit**: se guarda tal cual. Si lleva un enlace a otra web, el enlace se queda en el texto y no se extrae nada.
+- **Hilo**: los tuits del mismo autor que siguen al guardado; se lee como una lista de tuits.
+- **Artículo de X**: el texto del Artículo viene en la exportación y se lee en el lector como artículo.
+- **Cita** (de un tuit o de un Artículo): el citado es un elemento propio (`quoted_id`); se ven los dos y
+  «Quedarme sólo con el citado» archiva el original.
 
 ## Reglas
 
@@ -25,7 +33,6 @@ public/app.js          toda la interfaz: carga, tarjetas (card), lector (openIte
 public/style.css       estilos; los tokens de color y tipografía están arriba, en :root
 worker/index.js        API: /api/items, /api/items/:id (GET/PATCH/DELETE), /api/stats, importar, exportar…
 schema.sql             tablas, índice FTS5 y triggers
-extractor/             extracción de artículos (Python + trafilatura), la lanza GitHub Actions
 ```
 
 ## Diseño

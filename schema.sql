@@ -30,7 +30,6 @@ CREATE TABLE IF NOT EXISTS items (
     note            TEXT NOT NULL DEFAULT '',
     tags            TEXT NOT NULL DEFAULT '[]',  -- etiquetas (json)
     quoted_id       TEXT,                      -- id del tuit que cita (también guardado como elemento)
-    x_status        TEXT,                      -- NULL | 'remove' (quitar de X) | 'removed' (ya quitado)
     thread          TEXT,                      -- JSON: hilo del autor en orden [{id, text, media, links}]
     thread_text     TEXT,                      -- texto del hilo, para la búsqueda
     imported_at     TEXT NOT NULL DEFAULT (datetime('now')),

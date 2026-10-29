@@ -19,8 +19,6 @@ const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
 const ICONS = {
   star: '<path d="M12 17.75l-6.172 3.245l1.179 -6.873l-5 -4.867l6.9 -1l3.086 -6.253l3.086 6.253l6.9 1l-5 4.867l1.179 6.873z"/>',
   check: '<path d="M3 12a9 9 0 1 0 18 0a9 9 0 1 0 -18 0"/><path d="M9 12l2 2l4 -4"/>',
-  bookmarkOff: '<path d="M3 3l18 18"/><path d="M17 17v3l-5 -3l-5 3v-13m1.178 -2.818c.252 -.113 .53 -.176 .822 -.176h6a2 2 0 0 1 2 2v7"/>',
-  heartOff: '<path d="M3 3l18 18"/><path d="M19.5 12.572l-1.5 1.428m-2 2l-4 4l-7.5 -7.428a5 5 0 0 1 -1.288 -5.068a4.976 4.976 0 0 1 1.788 -2.504m3 -1c1.56 0 3.05 .727 4 2a5 5 0 0 1 7.5 6.572"/>',
   close: '<path d="M18 6l-12 12"/><path d="M6 6l12 12"/>',
   archive: '<path d="M3 4m0 2a2 2 0 0 1 2 -2h14a2 2 0 0 1 2 2v0a2 2 0 0 1 -2 2h-14a2 2 0 0 1 -2 -2z"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-10"/><path d="M10 12h4"/>',
   x: '<path d="M4 4l11.733 16h4.267l-11.733 -16z"/><path d="M4 20l6.768 -6.768m2.46 -2.46l6.772 -6.772"/>',
@@ -49,13 +47,8 @@ const fmtDate = (d) => d && !isNaN(d) ? d.toLocaleDateString("es-ES", { day: "nu
 const VIEWS = [
   ["all", "📥", "Todo"], ["unread", "📖", "Por leer"], ["favorites", "⭐", "Favoritos"],
   ["articles", "📰", "Artículos"], ["tweets", "💬", "Sólo tuits"], ["notes", "📝", "Con notas"], ["archived", "🗄️", "Archivados"],
-  ["x_keep", "👀", "Aún en X"], ["x_remove", "🧹", "Para quitar de X"],
 ];
 const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado" };
-// Se puede quitar de X lo que llegó como guardado o me gusta y no se ha quitado ya.
-const inX = (it) => it.x_status !== "removed" && it.sources.some((s) => s === "like" || s === "bookmark");
-// Quitar de X es quitarlo de guardados o, si sólo llegó como me gusta, quitar el me gusta.
-const xIcon = (it) => (it.sources.includes("bookmark") ? "bookmarkOff" : "heartOff");
 
 // Tarjetas o lista: la última que eligió la persona (si el navegador deja guardarla).
 const loadLayout = () => { try { return localStorage.getItem("layout") === "list" ? "list" : "cards"; } catch { return "cards"; } };
@@ -323,7 +316,6 @@ function acts(it) {
   return `<div class="acts">
     <button class="act fav ${it.favorite ? "on" : ""}" data-act="favorite" title="Favorito (f)" aria-label="Favorito">${icon("star")}</button>
     <button class="act read ${it.is_read ? "on" : ""}" data-act="is_read" title="Leído (r)" aria-label="Leído">${icon("check")}</button>
-    ${inX(it) ? `<button class="act ${it.x_status === "remove" ? "on" : ""}" data-act="x_status" title="Quitar de X (x)" aria-label="Quitar de X">${icon(xIcon(it))}</button>` : ""}
   </div>`;
 }
 
@@ -334,7 +326,6 @@ function rowMenu(it) {
     <div class="menu" role="menu">
       <button role="menuitem" data-act="favorite">${icon("star")}${it.favorite ? "Quitar de favoritos" : "Añadir a favoritos"}</button>
       <button role="menuitem" data-act="is_read">${icon("check")}${it.is_read ? "Marcar como no leído" : "Marcar como leído"}</button>
-      ${inX(it) ? `<button role="menuitem" data-act="x_status">${icon(xIcon(it))}${it.x_status === "remove" ? "No quitar de X" : "Quitar de X"}</button>` : ""}
     </div></div>`;
 }
 
@@ -537,8 +528,6 @@ async function openItem(it) {
           ${abtn("favorite", full.favorite, "star", "Favorito", "En favoritos", "Favorito (f)")}
           ${abtn("is_read", full.is_read, "check", "Marcar leído", "Leído", full.is_read ? "Marcar como no leído (r)" : "Marcar leído (r)")}
           ${abtn("archived", full.archived, "archive", "Archivar", "Archivado", full.archived ? "Desarchivar (e)" : "Archivar (e)")}
-          ${inX(full) ? abtn("x_status", full.x_status === "remove", xIcon(full), "Quitar de X", "Se quitará de X",
-            full.x_status === "remove" ? "Se quitará de tus " + (xIcon(full) === "bookmarkOff" ? "guardados" : "me gusta") + " de X con el script de limpieza (x)" : "Marcar para quitar de X (x)") : ""}
           ${verEnX}
           ${keepQuoted}
           <button class="btn wide danger" data-d="delete">${icon("trash")}<span>Eliminar de la estantería</span></button>
@@ -670,7 +659,6 @@ document.addEventListener("click", async (e) => {
     e.stopPropagation();
     const it = state.items[act.closest(".card").dataset.i];
     if (act.dataset.act === "tweet") return window.open(it.tweet_url, "_blank");
-    if (act.dataset.act === "x_status") { await toggleXRemove(it); syncItem(it); return; }
     await patch(it, { [act.dataset.act]: !it[act.dataset.act] });
     syncItem(it); loadStats();
     return;
@@ -690,11 +678,10 @@ document.addEventListener("click", async (e) => {
     }
     if (k === "keep-quoted") {
       const r = await api(`/api/items/${it.id}/keep-quoted`, { method: "POST" });
-      toast("Te quedas con el citado; el original queda archivado y marcado para quitar de X");
+      toast("Te quedas con el citado; el original queda archivado");
       refresh();
       return openItem({ id: r.kept });
     }
-    if (k === "x_status") { await toggleXRemove(it); syncItem(it); return openItem(it); }
     await patch(it, { [k]: !it[k] }); syncItem(it); loadStats(); return openItem(it);
   }
   const rm = t.closest("[data-rm]");
@@ -706,12 +693,14 @@ document.addEventListener("click", async (e) => {
 
 $("#scrim").onclick = closeDrawer;
 $("#copyScriptBtn").onclick = async (e) => {
-  const code = await fetch("/export_x.js").then((r) => r.text());
+  const [code, known] = await Promise.all([fetch("/export_x.js").then((r) => r.text()), api("/api/known-ids")]);
+  const filled = code.replace("/*__TWEETSHELF_KNOWN__*/null", JSON.stringify(known));
   try {
-    await navigator.clipboard.writeText(code);
+    await navigator.clipboard.writeText(filled);
     e.target.textContent = "✅ Copiado, pégalo en la consola de X";
   } catch {
-    window.open("/export_x.js", "_blank"); // sin permiso de portapapeles: que lo copie a mano
+    // sin permiso de portapapeles: se abre el script ya relleno para copiarlo a mano
+    window.open(URL.createObjectURL(new Blob([filled], { type: "text/plain" })), "_blank");
   }
 };
 $("#importBtn").onclick = openImport;
@@ -771,11 +760,6 @@ document.addEventListener("keydown", async (e) => {
   const it = state.open || state.items[state.focus];
   if (!it) return;
   if (e.key === "Enter" && !state.open) return openItem(it);
-  if (e.key === "x" && inX(it)) {
-    await toggleXRemove(it); syncItem(it);
-    if (state.open) openItem(it);
-    return toast(it.x_status === "remove" ? "Se quitará de X" : "Ya no se quitará de X");
-  }
   const field = { f: "favorite", r: "is_read", e: "archived" }[e.key];
   if (field) {
     await patch(it, { [field]: !it[field] }); syncItem(it); loadStats();
@@ -783,50 +767,6 @@ document.addEventListener("keydown", async (e) => {
     toast({ favorite: it.favorite ? "⭐ Favorito" : "Quitado de favoritos", is_read: it.is_read ? "✅ Leído" : "Marcado sin leer", archived: it.archived ? "🗄️ Archivado" : "📤 Desarchivado" }[field]);
   }
 });
-
-async function toggleXRemove(it) {
-  await patch(it, { x_status: it.x_status === "remove" ? null : "remove" });
-  loadStats();
-}
-
-// ------------------------------------------------------------------ limpiar X
-
-let cleanIds = [];
-function openClean() {
-  const x = state.stats?.x || { marked: 0, bookmarks: 0, likes: 0 };
-  $("#cleanCounts").innerHTML = [
-    ["marked", `Sólo los que he marcado para quitar de X (${x.marked})`, x.marked],
-    ["bookmarks", `Todos los guardados que ya están aquí (${x.bookmarks})`, x.bookmarks],
-    ["likes", `Todos los me gusta que ya están aquí (${x.likes})`, x.likes],
-  ].map(([k, label, n], i) => `<label class="radio"><input type="radio" name="cleanScope" value="${k}" ${i === 0 ? "checked" : ""} ${n ? "" : "disabled"}> ${label}</label>`).join("");
-  $("#cleanDone").classList.add("hidden");
-  $("#cleanCopy").textContent = "📋 Copiar script de limpieza";
-  $("#cleanDlg").showModal();
-}
-window.openClean = openClean;
-
-$("#cleanCopy").onclick = async () => {
-  const scope = document.querySelector('input[name="cleanScope"]:checked')?.value || "marked";
-  const data = await api(`/api/x-cleanup?scope=${scope}`);
-  cleanIds = [...new Set([...data.bookmarks, ...data.likes])];
-  if (!cleanIds.length) return toast("No hay nada que quitar");
-  const code = (await fetch("/clean_x.js").then((r) => r.text())).replace("__TWEETSHELF_DATA__", JSON.stringify(data));
-  try {
-    await navigator.clipboard.writeText(code);
-    $("#cleanCopy").textContent = `✅ Copiado (${cleanIds.length}). Pégalo en la consola de X`;
-  } catch {
-    toast("No he podido copiar al portapapeles");
-    return;
-  }
-  $("#cleanDone").classList.remove("hidden");
-};
-
-$("#cleanDone").onclick = async () => {
-  const r = await api("/api/x-cleanup/done", { method: "POST", body: JSON.stringify({ ids: cleanIds }) });
-  $("#cleanDlg").close();
-  toast(`✓ ${r.updated} marcados como quitados de X`);
-  refresh();
-};
 
 function toast(msg) {
   const t = $("#toast");

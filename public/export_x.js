@@ -479,7 +479,11 @@
           url: `https://x.com/${m[1]}/status/${m[2]}`,
           text: [a.querySelector('[data-testid="tweetText"]')?.innerText, articleTitle && `📰 ${articleTitle}`].filter(Boolean).join("\n\n"),
           links: [...links],
-          media: [...a.querySelectorAll('[data-testid="tweetPhoto"] img')].map((i) => i.src.replace(/name=\w+/, "name=large")),
+          // Los vídeos van en videoPlayer; su póster es la miniatura *_video_thumb, que la app reconoce.
+          media: [
+            ...[...a.querySelectorAll('[data-testid="tweetPhoto"] img')].map((i) => i.src.replace(/name=\w+/, "name=large")),
+            ...[...a.querySelectorAll('[data-testid="videoPlayer"] video[poster]')].map((v) => v.poster),
+          ].filter((u, i, all) => u && all.indexOf(u) === i),
         });
       });
       window.scrollBy(0, window.innerHeight * 0.9);

@@ -315,6 +315,7 @@ async function api(req, env, url) {
     return json(await importItems(db, body.items));
   }
   if (path === "/api/known-ids" && method === "GET") return json(await knownIds(db));
+  if (path === "/api/prueba-fx" && method === "GET") return json(await pruebaFx(url.searchParams.get("url")));
   if (path === "/api/export.json") {
     const { results } = await db.prepare("SELECT * FROM items ORDER BY CAST(id AS INTEGER) DESC").all();
     return json(results.map(toItem), 200, { "Content-Disposition": 'attachment; filename="tweetshelf.json"' });
@@ -344,6 +345,37 @@ async function api(req, env, url) {
     }
   }
   return err(404, "Ruta desconocida");
+}
+
+// ------------------------------------------------------------------ prueba de concepto: añadir por enlace
+
+// Prueba temporal (ver public/prueba-fx.html): pide un tuit a FxTwitter y a la API de incrustación de X
+// desde el Worker y devuelve lo que llega, para decidir si «pegar un enlace» puede traer hilos y Artículos.
+// No escribe nada en la base de datos.
+async function pruebaFx(link) {
+  const id = String(link || "").match(/status(?:es)?\/(\d+)/)?.[1] || String(link || "").match(/^\d+$/)?.[0];
+  if (!id) return { error: "No encuentro el id del tuit en el enlace" };
+  // El token de syndication se calcula del id; es lo que hacen los tuits incrustados de X.
+  const token = ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
+  const sources = {
+    "fxtwitter v1": `https://api.fxtwitter.com/status/${id}`,
+    "fxtwitter v2": `https://api.fxtwitter.com/2/status/${id}`,
+    "fxtwitter v2 hilo": `https://api.fxtwitter.com/2/thread/${id}`,
+    "syndication (X)": `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=es`,
+  };
+  const results = await Promise.all(Object.entries(sources).map(async ([name, src]) => {
+    const t0 = Date.now();
+    try {
+      const r = await fetch(src, { headers: { "User-Agent": "Tweetshelf/1.0 (+prueba de concepto)", Accept: "application/json" } });
+      const text = await r.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch {}
+      return { name, url: src, status: r.status, ms: Date.now() - t0, bytes: text.length, data, raw: data ? null : text.slice(0, 2000) };
+    } catch (e) {
+      return { name, url: src, status: 0, ms: Date.now() - t0, error: String(e.message || e) };
+    }
+  }));
+  return { id, results };
 }
 
 // ------------------------------------------------------------------ imágenes

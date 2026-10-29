@@ -12,16 +12,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "
 // Los fragmentos de búsqueda vienen del texto en Markdown: se quitan las marcas para que se lean limpios.
 const plainMd = (s) => String(s ?? "").replace(/!\[[^\]]*\]\([^)]*\)?/g, "").replace(/\[([^\]]*)\]\([^)]*\)?/g, "$1")
   .replace(/(\*\*|~~|`)/g, "").replace(/(^|\n)\s*(#{1,6}|>|[-*]|\d+[.)])\s+/g, "$1");
-// Una URL se muestra como su nombre corto, igual que en el cuerpo del tuit (linkify).
-const urlLabel = (u) => u.replace(/^https?:\/\//, "").slice(0, 40) + (u.length > 48 ? "…" : "");
-// El fragmento de búsqueda corta a veces la URL sin «https://» («github.com/…»): también se acorta.
-// Las marcas de coincidencia dentro de una URL se quitan, para que no queden etiquetas abiertas.
-const marked = (s) => esc(plainMd(s))
-  .replace(/https?:\/\/[^\s<]+|\b[a-z0-9-]+(?:\.[a-z0-9-]+)+\/[^\s<]*/gi, (u) => {
-    const clean = u.replace(/[\u0001\u0002]/g, "");
-    return urlLabel(/^https?:/i.test(clean) ? clean : `https://${clean}`);
-  })
-  .replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
+const marked = (s) => esc(plainMd(s)).replace(/\u0001/g, "<mark>").replace(/\u0002/g, "</mark>");
 const favicon = (d) => `https://www.google.com/s2/favicons?domain=${encodeURIComponent(d)}&sz=64`;
 const readMins = (w) => (w ? Math.max(1, Math.round(w / 230)) : null);
 // Iconos de Tabler (https://tabler.io/icons), en línea para no depender de nada externo.
@@ -123,7 +114,7 @@ const unX = (s) => String(s ?? "").replace(/&(amp|lt|gt);/g, (_, e) => ({ amp: "
   .replace(/(https?:\/\/)\s*\n\s*/g, "$1");
 
 function linkify(text) {
-  return esc(unX(text)).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${urlLabel(u)}</a>`);
+  return esc(unX(text)).replace(/https?:\/\/[^\s<]+/g, (u) => `<a href="${u}" target="_blank" rel="noopener" onclick="event.stopPropagation()">${u.replace(/^https?:\/\//, "").slice(0, 40)}${u.length > 48 ? "…" : ""}</a>`);
 }
 
 // Enlaces del tuit que no se ven ya en su texto (en importaciones antiguas el texto no siempre los trae).
@@ -384,7 +375,7 @@ function cardRow(it, i) {
     <div class="thumb">${hasArticle ? cover(it) : cover(it, it.media[0] || it.author_avatar) + (it.media[0] ? mediaBadge(it.media[0]) : "")}</div>
     <div class="mid">
       <div class="site">${origin(it, fromX)}${when ? `<span class="dot">·</span>${when}` : ""}${byline(it)}</div>
-      <div class="ttl">${esc(hasArticle ? title : unX(it.tweet_text).replace(/https?:\/\/[^\s]+/g, urlLabel))}</div>
+      <div class="ttl">${esc(hasArticle ? title : unX(it.tweet_text))}</div>
       ${sub ? `<div class="sub">${sub}</div>` : ""}
     </div>
     ${rowMenu(it)}

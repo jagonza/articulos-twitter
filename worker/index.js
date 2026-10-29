@@ -3,6 +3,8 @@
 // Secretos (Settings → Variables and secrets en el panel de Cloudflare):
 //   APP_PASSWORD  contraseña para entrar en la web
 
+import { fetchTweet } from "./fxtwitter.js";
+
 const SESSION_DAYS = 60;
 const COOKIE = "ts_session";
 
@@ -170,7 +172,7 @@ const UPSERT = `INSERT INTO items (id, sources, tweet_text, author_handle, autho
     article_status = CASE WHEN excluded.article_site = 'X' THEN 'ok' ELSE items.article_status END,
     urls = CASE WHEN items.urls = '[]' THEN excluded.urls ELSE items.urls END`;
 
-const SOURCES = new Set(["like", "bookmark", "quoted"]);
+const SOURCES = new Set(["like", "bookmark", "quoted", "link"]);
 
 function cleanThread(thread) {
   if (!Array.isArray(thread) || thread.length < 2) return { thread: null, thread_text: null };
@@ -315,7 +317,7 @@ async function api(req, env, url) {
     return json(await importItems(db, body.items));
   }
   if (path === "/api/known-ids" && method === "GET") return json(await knownIds(db));
-  if (path === "/api/prueba-fx" && method === "GET") return json(await pruebaFx(url.searchParams.get("url")));
+  if (path === "/api/add" && method === "POST") return addByLink(db, body.url);
   if (path === "/api/export.json") {
     const { results } = await db.prepare("SELECT * FROM items ORDER BY CAST(id AS INTEGER) DESC").all();
     return json(results.map(toItem), 200, { "Content-Disposition": 'attachment; filename="tweetshelf.json"' });
@@ -347,35 +349,23 @@ async function api(req, env, url) {
   return err(404, "Ruta desconocida");
 }
 
-// ------------------------------------------------------------------ prueba de concepto: añadir por enlace
+// ------------------------------------------------------------------ añadir por enlace
 
-// Prueba temporal (ver public/prueba-fx.html): pide un tuit a FxTwitter y a la API de incrustación de X
-// desde el Worker y devuelve lo que llega, para decidir si «pegar un enlace» puede traer hilos y Artículos.
-// No escribe nada en la base de datos.
-async function pruebaFx(link) {
-  const id = String(link || "").match(/status(?:es)?\/(\d+)/)?.[1] || String(link || "").match(/^\d+$/)?.[0];
-  if (!id) return { error: "No encuentro el id del tuit en el enlace" };
-  // El token de syndication se calcula del id; es lo que hacen los tuits incrustados de X.
-  const token = ((Number(id) / 1e15) * Math.PI).toString(36).replace(/(0+|\.)/g, "");
-  const sources = {
-    "fxtwitter v1": `https://api.fxtwitter.com/status/${id}`,
-    "fxtwitter v2": `https://api.fxtwitter.com/2/status/${id}`,
-    "fxtwitter v2 hilo": `https://api.fxtwitter.com/2/thread/${id}`,
-    "syndication (X)": `https://cdn.syndication.twimg.com/tweet-result?id=${id}&token=${token}&lang=es`,
-  };
-  const results = await Promise.all(Object.entries(sources).map(async ([name, src]) => {
-    const t0 = Date.now();
-    try {
-      const r = await fetch(src, { headers: { "User-Agent": "Tweetshelf/1.0 (+prueba de concepto)", Accept: "application/json" } });
-      const text = await r.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch {}
-      return { name, url: src, status: r.status, ms: Date.now() - t0, bytes: text.length, data, raw: data ? null : text.slice(0, 2000) };
-    } catch (e) {
-      return { name, url: src, status: 0, ms: Date.now() - t0, error: String(e.message || e) };
-    }
-  }));
-  return { id, results };
+// Pegar el enlace de un tuit: se guarda con su hilo, su cita y el texto de su Artículo (ver fxtwitter.js).
+async function addByLink(db, link) {
+  const id = String(link || "").match(/(?:x|twitter)\.com\/[^/]+\/status(?:es)?\/(\d+)/)?.[1];
+  if (!id) return err(400, "Pega el enlace de un tuit de x.com");
+  let items;
+  try {
+    items = await fetchTweet(id);
+  } catch {
+    return err(502, "No he podido traer ese tuit; prueba otra vez en un rato");
+  }
+  const before = await db.prepare("SELECT 1 FROM items WHERE id = ?").bind(id).first();
+  await importItems(db, items);
+  const row = await db.prepare(`SELECT ${LIST_COLS}, ${QUOTED_COL} FROM items i ${QUOTED_JOIN} WHERE i.id = ?`).bind(id).first();
+  if (!row) return err(502, "No he podido guardar ese tuit; prueba otra vez");
+  return json({ id, added: !before, item: toItem(row) });
 }
 
 // ------------------------------------------------------------------ imágenes

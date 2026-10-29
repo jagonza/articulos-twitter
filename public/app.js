@@ -48,7 +48,7 @@ const VIEWS = [
   ["all", "📥", "Todo"], ["unread", "📖", "Por leer"], ["favorites", "⭐", "Favoritos"],
   ["articles", "📰", "Artículos"], ["tweets", "💬", "Sólo tuits"], ["notes", "📝", "Con notas"], ["archived", "🗄️", "Archivados"],
 ];
-const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado" };
+const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado", link: "añadido a mano" };
 
 // Tarjetas o lista: la última que eligió la persona (si el navegador deja guardarla).
 const loadLayout = () => { try { return localStorage.getItem("layout") === "list" ? "list" : "cards"; } catch { return "cards"; } };
@@ -627,8 +627,35 @@ function syncItem(full) {
 
 // ------------------------------------------------------------------ importación
 
-function openImport() { $("#importResult").textContent = ""; $("#importDlg").showModal(); }
+function openImport() {
+  $("#importResult").textContent = "";
+  $("#addError").classList.add("hidden");
+  $("#importDlg").showModal();
+  // En escritorio el foco va al campo; en el móvil no, para que no salte el teclado.
+  if (matchMedia("(pointer: fine)").matches) $("#addUrl").focus();
+}
 window.openImport = openImport;
+
+// Pegar el enlace de un tuit: el Worker lo trae con su hilo, su cita y el texto de sus Artículos.
+async function addLink(e) {
+  e.preventDefault();
+  const input = $("#addUrl"), btn = $("#addBtn"), error = $("#addError");
+  btn.disabled = true; btn.textContent = "Añadiendo…";
+  error.classList.add("hidden");
+  try {
+    const r = await api("/api/add", { method: "POST", body: JSON.stringify({ url: input.value.trim() }) });
+    input.value = "";
+    $("#importDlg").close();
+    await refresh();
+    openItem({ id: r.id });
+    toast(r.added ? "Añadido" : "Ya lo tenías");
+  } catch (err) {
+    error.textContent = err.message;
+    error.classList.remove("hidden");
+  } finally {
+    btn.disabled = false; btn.textContent = "Añadir";
+  }
+}
 
 const CHUNK = 500;
 
@@ -730,6 +757,7 @@ $("#copyScriptBtn").onclick = async (e) => {
   }
 };
 $("#importBtn").onclick = openImport;
+$("#addForm").onsubmit = addLink;
 $("#moreBtn").onclick = () => load(true);
 $("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");
 // Tarjetas o lista: sólo se repinta, no se vuelve a pedir nada a la API.

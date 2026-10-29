@@ -187,8 +187,6 @@ select, .btn, .icon-btn {
 .quote .q-title { font-weight: 600; margin-top: 2px; }
 .quote .text { color: var(--muted); display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; white-space: pre-wrap; }
 .side-box .quote { margin: 10px 0 0; background: var(--panel); }
-.radios { display: flex; flex-direction: column; gap: 6px; margin: 12px 0; }
-.radio { display: flex; gap: 8px; align-items: center; cursor: pointer; }
 .btn.small { font-size: 13px; padding: 7px 10px; }
 kbd { font: 12px var(--sans); background: var(--line); border-radius: 4px; padding: 1px 5px; }
 

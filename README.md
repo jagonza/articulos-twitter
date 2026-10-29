@@ -4,15 +4,14 @@ Tu estantería de favoritos de X/Twitter: importa tus *me gusta* y tus elementos
 
 ## Qué hace
 
-- **Importa** desde el archivo de datos de X (el `.zip` entero o `data/like.js`), desde el script de exportación incluido (`public/export_x.js`, con botón «Copiar script» en la app), que trae guardados o me gusta con autor, enlaces reales, tuits citados y Artículos de X o desde el JSON/CSV de exportadores como *twitter-web-exporter*. Los ficheros se leen en tu navegador, así que el `.zip` puede pesar gigas: sólo se suben los tuits. Si un tuit aparece en varias fuentes se fusiona.
+- **Importa** desde el archivo de datos de X (el `.zip` entero o `data/like.js`), desde el script de exportación incluido (`public/export_x.js`, con botón «Copiar script» en la app), que trae guardados o me gusta con autor, enlaces reales, tuits citados y Artículos de X o desde el JSON/CSV de exportadores como *twitter-web-exporter*. El script trae sólo lo nuevo desde la última importación, y lo que tienes en X se queda allí. Los ficheros se leen en tu navegador, así que el `.zip` puede pesar gigas: sólo se suben los tuits. Si un tuit aparece en varias fuentes se fusiona.
 - **Artículos de X**: llegan completos en la exportación y se leen con su formato. Los enlaces a otras webs no se descargan: se quedan como enlace en el texto del tuit.
 - **Búsqueda de texto completo** (FTS5, sin distinguir acentos) en tuits, hilos, autores, Artículos de X, notas y etiquetas, con fragmentos resaltados.
 - **Organiza**: favoritos ⭐, leído ✅, archivo, notas con autoguardado y etiquetas.
 - **Filtra** por vista (por leer, favoritos, artículos, sólo tuits, con notas, archivados), etiqueta y autor. Ordena por fecha, relevancia, duración de lectura o al azar.
 - **Hilos**: si guardas un tuit que es parte de un hilo de su autor, el script trae el hilo entero y se lee en orden (y entra en la búsqueda).
 - **Modo lector** con el formato del original (títulos, listas, negritas, enlaces e imágenes; los artículos se guardan en Markdown), **🎲 Sorpréndeme** (un artículo sin leer al azar), atajos de teclado (`/` buscar · `j`/`k` moverse · `Enter` abrir · `f` favorito · `r` leído · `e` archivar · `Esc` cerrar), tema claro/oscuro y móvil.
-- **Tuits citados** como elementos propios: se ven dentro del tuit que los cita y en el lector aparece «Citado por», con «Quedarme sólo con el citado» pasas favorito, notas y etiquetas al citado y el original se archiva (y se marca para quitar de X).
-- **Limpia X**: marca con 🧹 (o la tecla `x`) lo que ya tienes aquí, o todo lo importado, y copia un script que lo quita de tus guardados / me gusta de X.
+- **Tuits citados** como elementos propios: se ven dentro del tuit que los cita y en el lector aparece «Citado por», con «Quedarme sólo con el citado» pasas favorito, notas y etiquetas al citado y el original se archiva.
 - **Exporta** a JSON completo o a Markdown (para Obsidian/Notion).
 
 ## Cómo está montado (coste: 0 €)
@@ -40,7 +39,7 @@ La base de datos D1 `tweetshelf` ya está creada y con el esquema aplicado (`sch
 | Qué | Cómo |
 | --- | --- |
 | **Me gusta** | X → Configuración → Tu cuenta → *Descargar un archivo de tus datos*. Llega en ~24 h. Sube el `.zip` tal cual. `like.js` no trae autor ni fecha; si luego importas los mismos tuits desde otra fuente, se completan. |
-| **Guardados** | El archivo de X no los incluye. En la app, *Importar → 📋 Copiar script*. Abre `https://x.com/i/bookmarks`, pega el script en la consola del navegador (la primera vez Chrome pide escribir `allow pasting`) y sube el JSON que descarga. |
+| **Guardados** | El archivo de X no los incluye. En la app, *Importar → 📋 Copiar script*. Abre `https://x.com/i/bookmarks`, pega el script en la consola del navegador (la primera vez Chrome pide escribir `allow pasting`) y sube el JSON que descarga. La próxima vez sólo trae lo nuevo. |
 
 ## Desarrollo en local
 

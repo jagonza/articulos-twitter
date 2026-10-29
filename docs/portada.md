@@ -15,7 +15,7 @@ falta tocar el Worker ni la base de datos: todo lo que se usa ya viene en `/api/
   `{ title, excerpt }` y úsala en las dos vistas.
 - **Origen**: si `fromX` (como ahora), el icono X y el texto «Artículo de X» (artículos) o «Tuit» / «Hilo de N»
   (tuits); si no, el favicon de 16 px (radio 4 px) y `article_site || domain`.
-- **Icono de quitar de X**: `xIcon(it)` (ya existe). Nada de emojis nuevos en las tarjetas: el 📝 de
+- Nada de emojis nuevos en las tarjetas: el 📝 de
   `badge-note` y el 🧵 de `thread-badge` desaparecen (ver más abajo qué los sustituye).
 - Los `data-act`, `data-tag`, `data-author`, `data-open` y `data-i` se mantienen tal cual: el manejador de
   clics de la línea `const act = t.closest("[data-act]")` no cambia, ni `syncItem()`, ni los atajos j/k.
@@ -65,7 +65,7 @@ Se mantiene el mosaico (`.grid { columns: 320px; column-gap: 18px; }`).
 - Si es favorito: estrella rellena de 15 px en `--star`.
 - A la derecha del todo, si no está leído: un punto de 8 px en `--accent` con `title="Por leer"`.
 
-**Acciones** (favorito, leído, quitar de X si `inX(it)`, abrir en X si no es de X):
+**Acciones** (favorito, leído, abrir en X si no es de X):
 - Ya no van en el pie. Van en una fila flotante arriba a la derecha (sobre la portada a 8 px del borde de la
   imagen, o arriba a la derecha de la cabecera en los tuits), botones de 34×34, radio 9, fondo
   `color-mix(in srgb, var(--panel) 85%, transparent)`, icono 17 px `--strong`; `.on` como ahora (acento o

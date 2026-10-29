@@ -16,7 +16,8 @@ const q = (v) => {
   if (typeof v === "object") v = JSON.stringify(v);
   return `'${String(v).replace(/'/g, "''")}'`;
 };
-const cols = Object.keys(items[0]);
+// Las copias de antes de quitar la limpieza de X traen x_status, columna que ya no existe.
+const cols = Object.keys(items[0]).filter((c) => c !== "x_status");
 const sql = items.map((it) => `INSERT OR REPLACE INTO items (${cols.join(",")}) VALUES (${cols.map((c) => q(it[c])).join(",")});`).join("\n");
 
 const root = path.join(__dirname, "..");

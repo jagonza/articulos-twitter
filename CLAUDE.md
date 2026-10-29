@@ -28,7 +28,7 @@ reglas para cambiar código.
 ## Mapa
 
 ```
-public/index.html      estructura de la página y diálogos (importar, limpiar X)
+public/index.html      estructura de la página y diálogos (importar)
 public/app.js          toda la interfaz: carga, tarjetas (card), lector (openItem), atajos, importación
 public/style.css       estilos; los tokens de color y tipografía están arriba, en :root
 worker/index.js        API: /api/items, /api/items/:id (GET/PATCH/DELETE), /api/stats, importar, exportar…

@@ -1,13 +1,12 @@
-// Exporta tus guardados o tus «me gusta» de X a un JSON que Tweetshelf sabe importar.
+// Exporta a un JSON lo que has guardado o te ha gustado en X desde la última vez, para Tweetshelf.
 //
-// Uso (en Tweetshelf → Importar tienes un botón «Copiar script»):
+// Uso (en Tweetshelf → Importar tienes un botón «Copiar script», que ya le dice lo que tienes):
 //   1. Con tu sesión iniciada, abre tus guardados (x.com/i/bookmarks, o Historia → Guardados)
 //      o tus me gusta (Historia → Me gusta, o x.com/tu_usuario/likes).
 //   2. Abre la consola del navegador (Cmd+Opt+J en Chrome / Cmd+Opt+K en Firefox).
 //   3. Pega este script entero (no su nombre) y pulsa Enter.
 //      La primera vez Chrome pide escribir `allow pasting` antes de dejarte pegar.
-//   4. Te pregunta cuántos exportar (los más recientes primero; vacío = todos). Así puedes ir por
-//      tandas: importas, los quitas de X con «Limpiar X» y repites.
+//   4. Baja la lista desde lo más reciente y para al llegar a lo que ya tienes en Tweetshelf: sólo exporta lo nuevo.
 //   5. Al terminar descargará un JSON. Súbelo en Tweetshelf → Importar.
 //
 // Pide a X la misma lista que está mostrando la página, con todos los datos de cada tuit: texto
@@ -15,24 +14,33 @@
 // se exportan también como elementos propios. Si X cambia algo y eso falla, recurre a leer la
 // página mientras baja sola.
 //
-// Puedes parar antes con `window.__stopExport = true` en la consola: descargará lo recogido.
 // Al final abre la conversación de cada tuit con respuestas para ver si el autor sigue un hilo, y pide los
-// tuits largos y los Artículos de X, que en la lista llegan recortados.
+// tuits largos y los Artículos de X, que en la lista llegan recortados. Eso lo hace del más antiguo al más
+// reciente: si se corta, lo terminado queda pegado a lo que ya tenías y la próxima vez no hay hueco.
+//
+// Para parar, `window.__stopExport = true` en la consola. Si para mientras baja la lista no descarga nada
+// (quedaría un hueco entre lo nuevo y lo que ya tienes); si para al completar los tuits, descarga los ya completos.
 (async () => {
+  window.__stopExport = false;
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const log = (...a) => console.log("%cTweetshelf", "color:#d9480f;font-weight:bold", ...a);
   // Token público del cliente web de X (el mismo que usa x.com para todas sus peticiones).
   const BEARER = "AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA";
   const TIMELINE_RE = /\/i\/api\/graphql\/[^/]+\/(Bookmarks|Likes)\?/;
 
+  // Ids que ya tiene Tweetshelf ({ bookmark: [...], like: [...] }). Los pone la app al pulsar «Copiar script»;
+  // si el script se copia a mano llega null y se exporta la lista entera.
+  const KNOWN = /*__TWEETSHELF_KNOWN__*/null;
+  if (!KNOWN && !confirm("Tweetshelf: este script no se ha copiado desde la app, así que no sabe qué tienes ya y exportará la lista entera. ¿Seguimos?"))
+    return log("Cancelado.");
+
   const items = new Map();
   let api = null; // cabeceras y «features» de la petición de la lista, para reutilizarlas
   let source = /\/likes/.test(location.pathname) ? "like" : "bookmark";
-  // Se puede exportar por tandas: los N más recientes (los que salen primero en la lista).
-  const answer = prompt("Tweetshelf: ¿cuántos exporto? Los más recientes primero. Déjalo vacío para exportarlos todos.", "30");
-  if (answer === null) return log("Cancelado.");
-  const LIMIT = Math.max(0, parseInt(answer, 10) || 0);
-  const isFull = () => LIMIT > 0 && [...items.values()].filter((i) => i.source !== "quoted").length >= LIMIT;
+  const known = { bookmark: new Set(KNOWN?.bookmark || []), like: new Set(KNOWN?.like || []) };
+  // Fase 1: los ids nuevos en el orden de la lista (más reciente primero).
+  const order = [];
+  let knownRun = 0, reachedEnd = false; // tuits conocidos seguidos; reachedEnd = ya llegamos a lo que tienes
 
   // ---------------------------------------------------------------- lectura de tuits de la API
 
@@ -187,6 +195,7 @@
     return L.reply_count === 0 ? null : r.rest_id;
   }
 
+  // Devuelve true si el tuit es nuevo en la lista (o estaba sólo como citado).
   function addTweet(raw, src) {
     const it = toItem(raw, src);
     if (!it) return false;
@@ -194,27 +203,44 @@
     delete it._quoted;
     if (!it._needsFull) delete it._needsFull;
     if (!it._threadRoot) delete it._threadRoot;
-    const isNew = !items.has(it.id);
+    const prev = items.get(it.id);
     // Un tuit que ya teníamos como citado gana la fuente principal si además está en la lista.
-    if (isNew || items.get(it.id).source === "quoted") items.set(it.id, it);
+    const takes = !prev || prev.source === "quoted";
+    if (takes) items.set(it.id, it);
     if (quoted && !items.has(quoted.rest_id)) addTweet(quoted, "quoted");
-    return isNew;
+    return takes;
+  }
+
+  // Cuenta los tuits conocidos seguidos. Diez seguidos sólo se dan al llegar a la zona ya importada: si vuelves a
+  // guardar algo viejo, sube arriba del todo, y con uno solo se perderían los nuevos que hay debajo.
+  function countKnown(id) {
+    if (!known[source].has(id)) { knownRun = 0; return false; }
+    if (++knownRun >= 10) reachedEnd = true;
+    return true;
+  }
+
+  // Un tuit de la lista (no los citados): los conocidos cuentan para parar y los nuevos se guardan.
+  function takeEntry(raw) {
+    if (reachedEnd) return;
+    const id = unwrap(raw)?.rest_id;
+    if (!id || countKnown(id)) return;
+    if (addTweet(raw, source)) order.push(id);
   }
 
   // Recorre la respuesta buscando las entradas de tuits y el cursor de la página siguiente.
   function parsePage(json) {
-    let added = 0, cursor = null;
+    let seen = 0, cursor = null;
     (function walk(o) {
       if (!o || typeof o !== "object") return;
       if (Array.isArray(o)) return o.forEach(walk);
       if (typeof o.entryId === "string") {
         if (o.entryId.startsWith("cursor-bottom")) cursor = o.content?.value || o.content?.itemContent?.value || cursor;
         const tr = o.content?.itemContent?.tweet_results?.result;
-        if (tr && !isFull() && addTweet(tr, source)) added++;
+        if (tr) { seen++; takeEntry(tr); }
       }
       for (const k in o) if (k !== "tweet_results") walk(o[k]);
     })(json);
-    return { added, cursor };
+    return { seen, cursor };
   }
 
   // ---------------------------------------------------------------- localizar la petición que usa la página
@@ -282,9 +308,11 @@
       }
       if (!r.ok) throw new Error(`X respondió ${r.status}`);
       const page = parsePage(await r.json());
-      log(`${items.size} tuits recogidos…`);
-      emptyPages = page.added ? 0 : emptyPages + 1;
-      if (isFull() || !page.cursor || page.cursor === cursor || emptyPages >= 2) break;
+      log(`${order.length} tuits nuevos recogidos…`);
+      emptyPages = page.seen ? 0 : emptyPages + 1;
+      if (reachedEnd) break;
+      // Sin cursor, con el mismo de antes o dos páginas sin tuits: X ya no tiene más lista.
+      if (!page.cursor || page.cursor === cursor || emptyPages >= 2) { reachedEnd = true; break; }
       cursor = page.cursor;
       await sleep(1200);
     }
@@ -389,19 +417,11 @@
     return fixed;
   }
 
-  // Hilos: pide la conversación y sigue la cadena de respuestas del autor a sí mismo desde el primer tuit.
-  async function fetchThreads(found) {
-    const pending = [...items.values()].filter((it) => it._threadRoot);
-    if (!pending.length) return;
-    if (!found.TweetDetail) {
-      log(`Hay ${pending.length} posibles hilos, pero no encuentro cómo pedirlos.`,
-        "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
-      return;
-    }
-    log(`Revisando si ${pending.length} tuits con respuestas son hilos…`);
-    let threads = 0, done = 0;
-    for (const it of pending) {
-      if (window.__stopExport) break;
+  // Un elemento: su hilo (si es de un autor que sigue en su propia conversación) y su texto completo.
+  // Un fallo sólo se registra: el elemento cuenta como terminado, igual que si no tuviera hilo.
+  const stats = { threads: 0, texts: 0 };
+  async function completeItem(found, it) {
+    if (it._threadRoot && found.TweetDetail) {
       try {
         const data = await gql("TweetDetail", found.TweetDetail, detailVars(it._threadRoot));
         const byId = {};
@@ -421,48 +441,35 @@
         }
         if (chain.length > 1 && chain.some((t) => t.rest_id === it.id)) {
           it.thread = chain.map((t) => toItem(t, it.source)).map((t) => ({ id: t.id, text: t.text, media: t.media, links: t.links }));
-          threads++;
+          stats.threads++;
         }
         if (it._needsFull && byId[it.id] && applyFull(it, toItem(byId[it.id], it.source))) delete it._needsFull;
       } catch (e) { log(`No he podido traer el hilo de ${it.id}: ${e.message}`); }
-      if (++done % 10 === 0) log(`${done}/${pending.length} revisados…`);
       await sleep(700);
     }
-    log(`Hilos encontrados: ${threads}.`);
-  }
-
-  async function completeTexts(found) {
-    const pending = [...items.values()].filter((it) => it._needsFull);
-    if (!pending.length) return;
-    if (!found.TweetResultByRestId && !found.TweetDetail) {
-      log("No encuentro cómo pedir los tuits completos; algunos textos largos quedarán recortados.",
-        "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
-      return;
-    }
-    log(`Pidiendo el texto completo de ${pending.length} tuits largos o con artículo…`);
-    let done = 0, fixed = 0;
-    for (const it of pending) {
-      if (window.__stopExport) break;
+    if (it._needsFull && (found.TweetResultByRestId || found.TweetDetail)) {
       try {
-        if (applyFull(it, toItem(await fetchFullTweet(found, it.id), it.source))) fixed++;
+        if (applyFull(it, toItem(await fetchFullTweet(found, it.id), it.source))) stats.texts++;
       } catch (e) { log(`No he podido completar ${it.id}: ${e.message}`); }
-      if (++done % 10 === 0) log(`${done}/${pending.length} completados…`);
       await sleep(700);
     }
-    log(`Textos completados: ${fixed}.`);
+    delete it._needsFull;
   }
 
   // ---------------------------------------------------------------- plan B: leer la página mientras baja
 
   async function exportViaPage() {
     log("Leyendo la página mientras baja…");
+    const seen = new Set();
     let idle = 0;
-    while (idle < 8 && !window.__stopExport && !isFull()) {
-      const before = items.size;
+    while (idle < 8 && !window.__stopExport && !reachedEnd) {
+      const before = seen.size;
       document.querySelectorAll('article[data-testid="tweet"]').forEach((a) => {
         const timeLink = a.querySelector('a[href*="/status/"] time')?.closest("a");
         const m = timeLink?.getAttribute("href")?.match(/^\/([^/]+)\/status\/(\d+)/);
-        if (!m || items.has(m[2]) || isFull()) return;
+        if (!m || seen.has(m[2]) || reachedEnd) return;
+        seen.add(m[2]);
+        if (countKnown(m[2])) return;
         const links = new Set();
         a.querySelectorAll('[data-testid="tweetText"] a[href], [data-testid="card.wrapper"] a[href]').forEach((l) => {
           if (!/^https?:\/\/(x|twitter)\.com\//.test(l.href)) links.add(l.href);
@@ -485,32 +492,65 @@
             ...[...a.querySelectorAll('[data-testid="videoPlayer"] video[poster]')].map((v) => v.poster),
           ].filter((u, i, all) => u && all.indexOf(u) === i),
         });
+        order.push(m[2]);
       });
       window.scrollBy(0, window.innerHeight * 0.9);
       await sleep(1200);
-      idle = items.size === before ? idle + 1 : 0;
-      log(`${items.size} tuits recogidos…`);
+      idle = seen.size === before ? idle + 1 : 0;
+      log(`${order.length} tuits nuevos recogidos…`);
     }
+    // Ocho vueltas sin nada visible nuevo: X ya no tiene más lista.
+    if (idle >= 8 && !window.__stopExport) reachedEnd = true;
   }
 
+  // ---------------------------------------------------------------- ejecución
+
+  // Fase 1: recorrer la lista. Si no llega a lo que ya tienes, no se descarga nada (quedaría un hueco).
   try {
     await exportViaApi();
   } catch (e) {
     log(`No he podido usar la API de X (${e.message}).`);
-    if (!items.size) await exportViaPage();
+    if (!order.length) await exportViaPage();
   }
-  window.__stopExport = false; // parar la lista no impide completar lo recogido
-  if (api) {
-    try {
-      const found = await findTweetQuery();
-      await fetchThreads(found);
-      await completeTexts(found);
-    } catch (e) {
-      log(`No he podido completar los textos largos o los hilos (${e.message}).`);
-    }
-  }
+  if (!reachedEnd) return log("He parado antes de llegar a lo que ya tienes, así que no descargo nada (quedaría un hueco).", "Vuelve a lanzar el script.");
+  if (!order.length) return log("No hay nada nuevo desde la última vez.");
+  log(`${order.length} ${source === "like" ? "me gusta" : "guardados"} nuevos. Ahora completo hilos y textos, del más antiguo al más reciente…`);
 
-  const list = [...items.values()];
+  // Fase 2: completar del más antiguo al más reciente. Si se corta, lo terminado queda pegado a lo que ya había.
+  let found = {};
+  if (api) {
+    try { found = await findTweetQuery(); } catch (e) { log(`No he podido completar los textos largos o los hilos (${e.message}).`); }
+  }
+  const withThread = [...items.values()].filter((it) => it._threadRoot).length;
+  const withLong = [...items.values()].filter((it) => it._needsFull).length;
+  if (withThread && !found.TweetDetail) log(`Hay ${withThread} posibles hilos, pero no encuentro cómo pedirlos.`,
+    "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
+  if (withLong && !found.TweetResultByRestId && !found.TweetDetail) log("No encuentro cómo pedir los tuits completos; algunos textos largos quedarán recortados.",
+    "Abre un tuit cualquiera, vuelve a esta lista y lanza el script otra vez.");
+
+  const done = [];
+  for (const id of [...order].reverse()) {
+    if (window.__stopExport) break;
+    const it = items.get(id);
+    await completeItem(found, it);
+    const q = it.quoted_id && items.get(it.quoted_id);
+    if (q?.source === "quoted") await completeItem(found, q);
+    done.push(id);
+    if (done.length % 10 === 0) log(`${done.length}/${order.length} completados…`);
+  }
+  if (!done.length) return log("Parado antes de completar ninguno; no descargo nada.");
+  log(`Hilos encontrados: ${stats.threads}. Textos completados: ${stats.texts}.`);
+
+  // Lo terminado, del más antiguo al más reciente. Un citado que sólo llegó por citar va justo antes del tuit que lo cita.
+  const list = [];
+  const placed = new Set();
+  for (const id of done) {
+    const it = items.get(id);
+    const q = it.quoted_id && items.get(it.quoted_id);
+    if (q?.source === "quoted" && !placed.has(q.id)) { list.push(q); placed.add(q.id); }
+    list.push(it);
+    placed.add(id);
+  }
   list.forEach((it) => { delete it._needsFull; delete it._threadRoot; });
   const quotedCount = list.filter((i) => i.source === "quoted").length;
   const blob = new Blob([JSON.stringify({ source, exported_at: new Date().toISOString(), items: list }, null, 2)], { type: "application/json" });
@@ -522,4 +562,5 @@
   a.click();
   const threadCount = list.filter((i) => i.thread).length;
   log(`Listo: ${list.length - quotedCount} ${source === "like" ? "me gusta" : "guardados"} y ${quotedCount} tuits citados exportados${threadCount ? `, con ${threadCount} hilos` : ""}.`);
+  if (done.length < order.length) log(`Parado: exporto los ${done.length} más antiguos de ${order.length}; vuelve a lanzar el script para el resto.`);
 })();

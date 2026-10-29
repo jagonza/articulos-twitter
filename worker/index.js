@@ -63,15 +63,12 @@ const VIEWS = {
   tweets: "i.article_status != 'ok' AND i.archived = 0",
   notes: "i.note != ''",
   archived: "i.archived = 1",
-  // Guardados o me gusta que siguen en X: ni quitados ni marcados para quitar.
-  x_keep: "i.x_status IS NULL AND (instr(i.sources, 'bookmark') > 0 OR instr(i.sources, 'like') > 0)",
-  x_remove: "i.x_status = 'remove'",
 };
 // Columnas de la lista (sin el texto completo del artículo, que pesa).
 const LIST_COLS = `i.id, i.sources, i.tweet_text, i.author_handle, i.author_name, i.author_avatar, i.tweet_created, i.tweet_url,
   i.urls, i.media, i.article_url, i.article_status, i.article_title, i.article_author, i.article_site, i.article_date,
   i.article_image, i.article_excerpt, i.article_words, i.article_error, i.domain, i.favorite, i.is_read, i.archived,
-  i.note, i.tags, i.updated_at, i.quoted_id, i.x_status, json_array_length(i.thread) AS thread_count`;
+  i.note, i.tags, i.updated_at, i.quoted_id, json_array_length(i.thread) AS thread_count`;
 // Datos mínimos del tuit citado para pintarlo dentro de la tarjeta.
 const QUOTED_JOIN = "LEFT JOIN items q ON q.id = i.quoted_id";
 const QUOTED_COL = `CASE WHEN q.id IS NULL THEN NULL ELSE json_object('id', q.id, 'tweet_text', q.tweet_text,
@@ -235,10 +232,7 @@ async function stats(db) {
         SUM(is_read = 0 AND archived = 0 AND article_status = 'ok') AS unread,
         SUM(article_status = 'ok' AND archived = 0) AS articles,
         SUM(article_status != 'ok' AND archived = 0) AS tweets,
-        SUM(note != '') AS notes, SUM(archived = 1) AS archived, SUM(x_status = 'remove') AS x_remove,
-        SUM(x_status IS NULL AND (instr(sources, 'bookmark') > 0 OR instr(sources, 'like') > 0)) AS x_keep,
-        SUM(instr(sources, 'bookmark') > 0 AND x_status IS NOT 'removed') AS x_bookmarks,
-        SUM(instr(sources, 'like') > 0 AND x_status IS NOT 'removed') AS x_likes,
+        SUM(note != '') AS notes, SUM(archived = 1) AS archived,
         SUM(CASE WHEN is_read = 0 AND article_status = 'ok' THEN coalesce(article_words, 0) ELSE 0 END) AS words_unread
       FROM items`),
     db.prepare("SELECT j.value AS tag, COUNT(*) AS n FROM items, json_each(items.tags) j GROUP BY j.value ORDER BY n DESC, tag LIMIT 60"),
@@ -246,18 +240,15 @@ async function stats(db) {
       FROM items WHERE author_handle IS NOT NULL GROUP BY author_handle ORDER BY n DESC LIMIT 15`),
   ]);
   const c = counts.results[0];
-  const { words_unread, x_bookmarks, x_likes, ...views } = c;
+  const { words_unread, ...views } = c;
   for (const k in views) views[k] = views[k] || 0;
-  return { counts: views, words_unread: words_unread || 0,
-    x: { bookmarks: x_bookmarks || 0, likes: x_likes || 0, marked: views.x_remove },
-    tags: tags.results, authors: authors.results };
+  return { counts: views, words_unread: words_unread || 0, tags: tags.results, authors: authors.results };
 }
 
 async function patchItem(db, id, body) {
   const fields = {};
   for (const k of ["favorite", "is_read", "archived"]) if (typeof body[k] === "boolean") fields[k] = body[k] ? 1 : 0;
   if (typeof body.note === "string") fields.note = body.note.slice(0, 20000);
-  if ("x_status" in body && [null, "remove", "removed"].includes(body.x_status)) fields.x_status = body.x_status;
   if (Array.isArray(body.tags)) {
     fields.tags = JSON.stringify([...new Set(body.tags.map((t) => String(t).trim().toLowerCase()).filter(Boolean))].slice(0, 30));
   }
@@ -272,8 +263,8 @@ async function patchItem(db, id, body) {
   return row ? json(toItem(row)) : err(404, "No existe");
 }
 
-// «Quedarme sólo con el citado»: pasa favorito, notas y etiquetas al tuit citado y archiva el que cita
-// (marcándolo para quitar de X si sigue allí), así deja de aparecer en la biblioteca.
+// «Quedarme sólo con el citado»: pasa favorito, notas y etiquetas al tuit citado y archiva el que cita,
+// así deja de aparecer en la biblioteca.
 async function keepQuoted(db, id) {
   const parent = await db.prepare("SELECT quoted_id, favorite, note, tags, tweet_url FROM items WHERE id = ?").bind(id).first();
   if (!parent?.quoted_id) return err(400, "Este tuit no cita a ningún otro guardado");
@@ -284,25 +275,19 @@ async function keepQuoted(db, id) {
         tags = (SELECT json_group_array(value) FROM (SELECT value FROM json_each(items.tags) UNION SELECT value FROM json_each(?3))),
         archived = 0, updated_at = datetime('now')
       WHERE id = ?4`).bind(parent.favorite, note, parent.tags, parent.quoted_id),
-    db.prepare(`UPDATE items SET archived = 1,
-        x_status = CASE WHEN x_status IS NULL AND (instr(sources, 'bookmark') > 0 OR instr(sources, 'like') > 0) THEN 'remove' ELSE x_status END,
-        updated_at = datetime('now') WHERE id = ?`).bind(id),
+    db.prepare("UPDATE items SET archived = 1, updated_at = datetime('now') WHERE id = ?").bind(id),
   ]);
   return json({ ok: true, kept: parent.quoted_id });
 }
 
-// Qué quitar de X: lo marcado a mano, o todos los guardados / me gusta que ya están aquí.
-async function xCleanup(db, scope) {
-  const where = {
-    marked: "x_status = 'remove'",
-    bookmarks: "instr(sources, 'bookmark') > 0 AND x_status IS NOT 'removed'",
-    likes: "instr(sources, 'like') > 0 AND x_status IS NOT 'removed'",
-  }[scope] || "x_status = 'remove'";
-  const { results } = await db.prepare(`SELECT id, sources FROM items WHERE ${where}`).all();
+// Ids que ya están aquí por fuente, para que el script de exportación pare al llegar a ellos.
+async function knownIds(db) {
+  const { results } = await db.prepare(
+    "SELECT id, sources FROM items WHERE instr(sources, 'bookmark') > 0 OR instr(sources, 'like') > 0").all();
   const has = (r, s) => r.sources.split(",").includes(s);
   return {
-    bookmarks: scope === "likes" ? [] : results.filter((r) => has(r, "bookmark")).map((r) => r.id),
-    likes: scope === "bookmarks" ? [] : results.filter((r) => has(r, "like")).map((r) => r.id),
+    bookmark: results.filter((r) => has(r, "bookmark")).map((r) => r.id),
+    like: results.filter((r) => has(r, "like")).map((r) => r.id),
   };
 }
 
@@ -329,12 +314,7 @@ async function api(req, env, url) {
     if (!Array.isArray(body.items) || body.items.length > 1000) return err(400, "Envía hasta 1000 elementos por petición");
     return json(await importItems(db, body.items));
   }
-  if (path === "/api/x-cleanup" && method === "GET") return json(await xCleanup(db, url.searchParams.get("scope")));
-  if (path === "/api/x-cleanup/done" && method === "POST") {
-    const ids = (body.ids || []).filter((i) => /^\d+$/.test(String(i))).map(String);
-    const r = await db.prepare("UPDATE items SET x_status = 'removed' WHERE id IN (SELECT value FROM json_each(?1))").bind(JSON.stringify(ids)).run();
-    return json({ updated: r.meta.changes });
-  }
+  if (path === "/api/known-ids" && method === "GET") return json(await knownIds(db));
   if (path === "/api/export.json") {
     const { results } = await db.prepare("SELECT * FROM items ORDER BY CAST(id AS INTEGER) DESC").all();
     return json(results.map(toItem), 200, { "Content-Disposition": 'attachment; filename="tweetshelf.json"' });

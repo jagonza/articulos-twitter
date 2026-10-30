@@ -1,7 +1,8 @@
 // Capturas de la app en local para comprobar cambios de interfaz. Necesita `npm run dev` en marcha.
 // Uso: node scripts/screenshots.cjs [carpeta]   (por defecto .wrangler/shots)
 // Saca la portada y el lector (un artículo, un hilo y un tuit con vídeo) en escritorio oscuro y en móvil claro,
-// y la portada en vista de lista (escritorio-lista, movil-lista).
+// la portada en vista de lista (escritorio-lista, movil-lista), el menú del móvil abierto (movil-menu)
+// y la vista «Por leer» en escritorio (escritorio-por-leer).
 const fs = require("fs");
 const path = require("path");
 const { chromium } = require("playwright");
@@ -44,6 +45,19 @@ const password = (vars.match(/^APP_PASSWORD=(.*)$/m) || [])[1] || "cambia-esto";
       await page.screenshot({ path: path.join(outDir, `${name}-${kind}.png`) });
       await page.keyboard.press("Escape");
       await page.waitForTimeout(300);
+    }
+    // Barra lateral: el panel del móvil abierto, y la vista «Por leer» en escritorio.
+    if (name === "movil") {
+      await page.click("#menuBtn");
+      await page.waitForTimeout(400);
+      await page.screenshot({ path: path.join(outDir, `${name}-menu.png`) });
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(300);
+    }
+    if (name === "escritorio") {
+      await page.click("#unreadBtn");
+      await page.waitForTimeout(600);
+      await page.screenshot({ path: path.join(outDir, `${name}-por-leer.png`) });
     }
   }
   await browser.close();

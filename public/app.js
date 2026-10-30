@@ -26,9 +26,25 @@ const ICONS = {
   quote: '<path d="M10 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/><path d="M19 11h-4a1 1 0 0 1 -1 -1v-3a1 1 0 0 1 1 -1h3a1 1 0 0 1 1 1v6c0 2.667 -1.333 4.333 -4 5"/>',
   dots: '<path d="M5 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M19 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/>',
   trash: '<path d="M4 7l16 0"/><path d="M10 11l0 6"/><path d="M14 11l0 6"/><path d="M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2 -2l1 -12"/><path d="M9 7v-3a1 1 0 0 1 1 -1h4a1 1 0 0 1 1 1v3"/>',
+  books: '<path d="M5 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1l0 -14"/><path d="M9 5a1 1 0 0 1 1 -1h2a1 1 0 0 1 1 1v14a1 1 0 0 1 -1 1h-2a1 1 0 0 1 -1 -1l0 -14"/><path d="M5 8h4"/><path d="M9 16h4"/><path d="M13.803 4.56l2.184 -.53c.562 -.135 1.133 .19 1.282 .732l3.695 13.418a1.02 1.02 0 0 1 -.634 1.219l-.133 .041l-2.184 .53c-.562 .135 -1.133 -.19 -1.282 -.732l-3.695 -13.418a1.02 1.02 0 0 1 .634 -1.219l.133 -.041"/><path d="M14 9l4 -1"/><path d="M16 16l3.923 -.98"/>',
+  inbox: '<path d="M4 6a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2l0 -12"/><path d="M4 13h3l3 3h4l3 -3h3"/>',
+  'file-text': '<path d="M14 3v4a1 1 0 0 0 1 1h4"/><path d="M17 21h-10a2 2 0 0 1 -2 -2v-14a2 2 0 0 1 2 -2h7l5 5v11a2 2 0 0 1 -2 2"/><path d="M9 9l1 0"/><path d="M9 13l6 0"/><path d="M9 17l6 0"/>',
+  message: '<path d="M8 9h8"/><path d="M8 13h6"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12"/>',
+  note: '<path d="M13 20l7 -7"/><path d="M13 20v-6a1 1 0 0 1 1 -1h6v-7a2 2 0 0 0 -2 -2h-12a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7"/>',
+  hash: '<path d="M5 9l14 0"/><path d="M5 15l14 0"/><path d="M11 4l-4 16"/><path d="M17 4l-4 16"/>',
+  moon: '<path d="M12 3c.132 0 .263 0 .393 0a7.5 7.5 0 0 0 7.92 12.446a9 9 0 1 1 -8.313 -12.454l0 .008"/>',
+  sun: '<path d="M8 12a4 4 0 1 0 8 0a4 4 0 1 0 -8 0"/><path d="M3 12h1m8 -9v1m8 8h1m-9 8v1m-6.4 -15.4l.7 .7m12.1 -.7l-.7 .7m0 11.4l.7 .7m-12.1 -.7l-.7 .7"/>',
+  plus: '<path d="M12 5l0 14"/><path d="M5 12l14 0"/>',
+  'arrows-shuffle': '<path d="M18 4l3 3l-3 3"/><path d="M18 20l3 -3l-3 -3"/><path d="M3 7h3a5 5 0 0 1 5 5a5 5 0 0 0 5 5h5"/><path d="M21 7h-5a4.978 4.978 0 0 0 -3 1m-4 8a4.984 4.984 0 0 1 -3 1h-3"/>',
+  'chevron-right': '<path d="M9 6l6 6l-6 6"/>',
+  download: '<path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2 -2v-2"/><path d="M7 11l5 5l5 -5"/><path d="M12 4l0 12"/>',
+  logout: '<path d="M14 8v-2a2 2 0 0 0 -2 -2h-7a2 2 0 0 0 -2 2v12a2 2 0 0 0 2 2h7a2 2 0 0 0 2 -2v-2"/><path d="M9 12h12l-3 -3"/><path d="M18 15l3 -3"/>',
+  'menu-2': '<path d="M4 6l16 0"/><path d="M4 12l16 0"/><path d="M4 18l16 0"/>',
   play: '<path d="M7 4v16l13 -8z"/>',
 };
 const icon = (name) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true">${ICONS[name]}</svg>`;
+// Los iconos fijos de la página (marca, Añadir, menú…) se pintan aquí, sin repetir los paths en el HTML.
+document.querySelectorAll("[data-icon]").forEach((el) => { el.innerHTML = icon(el.dataset.icon); });
 const isXDomain = (d) => /^(www\.)?(x|twitter)\.com$/.test(d || "");
 // X sirve las miniaturas de vídeo y de GIF desde rutas propias: la URL basta para saber qué es.
 const mediaKind = (url) => /\/tweet_video_thumb\//.test(url) ? "gif"
@@ -43,10 +59,10 @@ const tweetDate = (id) => {
 };
 const fmtDate = (d) => d && !isNaN(d) ? d.toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }) : "";
 
-const VIEWS = [
-  ["all", "📥", "Todo"], ["unread", "📖", "Por leer"], ["favorites", "⭐", "Favoritos"],
-  ["articles", "📰", "Artículos"], ["tweets", "💬", "Sólo tuits"], ["notes", "📝", "Con notas"], ["archived", "🗄️", "Archivados"],
-];
+// Estantería y marcas de la barra lateral. «Por leer» vive en su caja, arriba.
+const SHELF = [["all", "inbox", "Todo"], ["articles", "file-text", "Artículos de X"], ["tweets", "message", "Tuits"]];
+const MARKS = [["favorites", "star", "Favoritos"], ["notes", "note", "Con notas"], ["archived", "archive", "Archivados"]];
+const FACET_MAX = { tags: 8, authors: 5 };
 const SOURCE_LABEL = { like: "me gusta", bookmark: "guardado", quoted: "citado", link: "añadido a mano" };
 
 // Tarjetas o lista: la última que eligió la persona (si el navegador deja guardarla).
@@ -67,15 +83,35 @@ async function load(append = false) {
 
 async function loadStats() {
   const s = await api("/api/stats");
-  $("#views").innerHTML = VIEWS.map(([k, icon, label]) =>
-    `<button data-view="${k}" class="${state.view === k ? "active" : ""}"><span>${icon}&nbsp; ${label}</span><span class="count">${s.counts[k]}</span></button>`).join("");
-  $("#tagList").innerHTML = s.tags.length ? s.tags.map((t) =>
-    `<button class="chip ${state.tag === t.tag ? "active" : ""}" data-tag="${esc(t.tag)}">#${esc(t.tag)} <span class="muted">${t.n}</span></button>`).join("")
-    : `<span class="muted small">Añade etiquetas desde el lector</span>`;
-  $("#authorList").innerHTML = s.authors.map((a) =>
-    `<li data-author="${esc(a.handle)}" class="${state.author === a.handle ? "active" : ""}">${a.avatar ? `<img src="${esc(pic(a.avatar))}" alt="" style="border-radius:50%">` : ""}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></li>`).join("");
-  $("#empty").classList.toggle("hidden", s.counts.all + s.counts.archived > 0);
   state.stats = s;
+  const row = ([k, name, label]) => `<button class="row ${state.view === k ? "active" : ""}" data-view="${k}">${icon(name)}<span class="label">${label}</span><span class="count">${s.counts[k]}</span></button>`;
+  $("#shelfViews").innerHTML = SHELF.map(row).join("");
+  $("#markViews").innerHTML = MARKS.map(row).join("");
+  // Por leer: cuántos quedan y cuánto se tarda en leerlos (230 palabras por minuto).
+  const unread = s.counts.unread;
+  const hours = Math.round(s.words_unread / 230 / 60);
+  $("#unreadBtn").classList.toggle("active", state.view === "unread");
+  $("#unreadCount").textContent = unread ? `${unread} por leer` : "Nada por leer";
+  $("#unreadTime").textContent = !unread ? "" : hours ? `unas ${hours} h de lectura` : "menos de una hora";
+  renderFacets();
+  $("#empty").classList.toggle("hidden", s.counts.all + s.counts.archived > 0);
+}
+
+// Etiquetas y autores: se ven los primeros; el resto se despliega al pulsar «Ver las N…», sin pedir nada nuevo.
+const facetsOpen = { tags: false, authors: false };
+const shownFacet = (key, list) => facetsOpen[key] ? list : list.slice(0, FACET_MAX[key]);
+const moreFacet = (key, total, text) => total > FACET_MAX[key]
+  ? `<button class="row sub more-rows" data-more="${key}">${facetsOpen[key] ? "Ver menos" : text}</button>` : "";
+const miniAvatar = (a) => `<span class="mini" style="--h:${hue(a.handle)}">${esc((a.name || a.handle || "?")[0].toUpperCase())}${a.avatar ? `<img src="${esc(pic(a.avatar))}" alt="" onerror="this.remove()">` : ""}</span>`;
+
+function renderFacets() {
+  const s = state.stats;
+  $("#tagList").innerHTML = s.tags.length
+    ? shownFacet("tags", s.tags).map((t) => `<button class="row sub ${state.tag === t.tag ? "active" : ""}" data-tag="${esc(t.tag)}">${icon("hash")}<span class="label">${esc(t.tag)}</span><span class="n">${t.n}</span></button>`).join("")
+      + moreFacet("tags", s.tags.length, `Ver las ${s.tags.length} etiquetas`)
+    : `<p class="hint">Añade etiquetas desde el lector</p>`;
+  $("#authorList").innerHTML = shownFacet("authors", s.authors).map((a) => `<button class="row sub ${state.author === a.handle ? "active" : ""}" data-author="${esc(a.handle)}">${miniAvatar(a)}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></button>`).join("")
+    + moreFacet("authors", s.authors.length, `Ver los ${s.authors.length} autores`);
 }
 
 const refresh = () => Promise.all([load(), loadStats()]);
@@ -694,15 +730,17 @@ document.addEventListener("click", async (e) => {
     return;
   }
   const v = t.closest("[data-view]");
-  if (v) { state.view = v.dataset.view; $("#sidebar").classList.remove("open"); return refresh(); }
+  if (v) { state.view = v.dataset.view; setSheet(false); return refresh(); }
+  const more = t.closest("[data-more]");
+  if (more) { facetsOpen[more.dataset.more] = !facetsOpen[more.dataset.more]; return renderFacets(); }
   const lay = t.closest("[data-layout]");
   if (lay) return setLayout(lay.dataset.layout);
   const clear = t.closest("[data-clear]");
   if (clear) { state[clear.dataset.clear] = ""; if (clear.dataset.clear === "q") $("#q").value = ""; return refresh(); }
   const tag = t.closest("[data-tag]");
-  if (tag) { e.stopPropagation(); state.tag = state.tag === tag.dataset.tag ? "" : tag.dataset.tag; return refresh(); }
+  if (tag) { e.stopPropagation(); setSheet(false); state.tag = state.tag === tag.dataset.tag ? "" : tag.dataset.tag; return refresh(); }
   const au = t.closest("[data-author]");
-  if (au) { if (state.open) closeDrawer(); state.author = state.author === au.dataset.author ? "" : au.dataset.author; return refresh(); }
+  if (au) { if (state.open) closeDrawer(); setSheet(false); state.author = state.author === au.dataset.author ? "" : au.dataset.author; return refresh(); }
 
   const act = t.closest("[data-act]");
   if (act) {
@@ -754,9 +792,18 @@ $("#copyScriptBtn").onclick = async (e) => {
   }
 };
 $("#importBtn").onclick = openImport;
+$("#importBtnTop").onclick = openImport;
 $("#addForm").onsubmit = addLink;
 $("#moreBtn").onclick = () => load(true);
-$("#menuBtn").onclick = () => $("#sidebar").classList.toggle("open");
+// Móvil: la barra lateral es un panel que entra desde la izquierda, con un velo detrás.
+function setSheet(open) {
+  $("#sidebar").classList.toggle("open", open);
+  $("#menuScrim").classList.toggle("hidden", !open);
+  document.documentElement.classList.toggle("menu-open", open);
+}
+$("#menuBtn").onclick = () => setSheet(!$("#sidebar").classList.contains("open"));
+$("#menuClose").onclick = () => setSheet(false);
+$("#menuScrim").onclick = () => setSheet(false);
 // Tarjetas o lista: sólo se repinta, no se vuelve a pedir nada a la API.
 function setLayout(layout) {
   state.layout = layout;
@@ -764,14 +811,16 @@ function setLayout(layout) {
   renderGrid();
 }
 $("#sort").onchange = (e) => { state.sort = e.target.value; load(); };
+const isDark = () => (document.documentElement.dataset.theme || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")) === "dark";
+const paintTheme = () => { $("#themeBtn").innerHTML = icon(isDark() ? "moon" : "sun"); };
 $("#themeBtn").onclick = () => {
-  const dark = matchMedia("(prefers-color-scheme: dark)").matches;
-  const cur = document.documentElement.dataset.theme || (dark ? "dark" : "light");
-  const next = cur === "dark" ? "light" : "dark";
+  const next = isDark() ? "light" : "dark";
   document.documentElement.dataset.theme = next;
   try { localStorage.setItem("theme", next); } catch {}
+  paintTheme();
 };
 try { const th = localStorage.getItem("theme"); if (th) document.documentElement.dataset.theme = th; } catch {}
+paintTheme();
 
 let qt;
 $("#q").addEventListener("input", (e) => {
@@ -798,7 +847,10 @@ document.addEventListener("keydown", async (e) => {
     return;
   }
   if (e.key === "/") { e.preventDefault(); return $("#q").focus(); }
-  if (e.key === "Escape") return closeDrawer();
+  if (e.key === "Escape") {
+    if ($("#sidebar").classList.contains("open")) return setSheet(false);
+    return closeDrawer();
+  }
   const move = { j: 1, k: -1 }[e.key];
   if (move) {
     state.focus = Math.max(0, Math.min(state.items.length - 1, state.focus + move));

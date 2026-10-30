@@ -84,7 +84,7 @@ async function load(append = false) {
 async function loadStats() {
   const s = await api("/api/stats");
   state.stats = s;
-  const row = ([k, name, label]) => `<button class="row ${state.view === k ? "active" : ""}" data-view="${k}">${icon(name)}<span class="label">${label}</span><span class="count">${s.counts[k]}</span></button>`;
+  const row = ([k, name, label]) => `<button class="nav-row ${state.view === k ? "active" : ""}" data-view="${k}">${icon(name)}<span class="label">${label}</span><span class="count">${s.counts[k]}</span></button>`;
   $("#shelfViews").innerHTML = SHELF.map(row).join("");
   $("#markViews").innerHTML = MARKS.map(row).join("");
   // Por leer: cuántos quedan y cuánto se tarda en leerlos (230 palabras por minuto).
@@ -101,16 +101,16 @@ async function loadStats() {
 const facetsOpen = { tags: false, authors: false };
 const shownFacet = (key, list) => facetsOpen[key] ? list : list.slice(0, FACET_MAX[key]);
 const moreFacet = (key, total, text) => total > FACET_MAX[key]
-  ? `<button class="row sub more-rows" data-more="${key}">${facetsOpen[key] ? "Ver menos" : text}</button>` : "";
+  ? `<button class="nav-row sub more-rows" data-more="${key}">${facetsOpen[key] ? "Ver menos" : text}</button>` : "";
 const miniAvatar = (a) => `<span class="mini" style="--h:${hue(a.handle)}">${esc((a.name || a.handle || "?")[0].toUpperCase())}${a.avatar ? `<img src="${esc(pic(a.avatar))}" alt="" onerror="this.remove()">` : ""}</span>`;
 
 function renderFacets() {
   const s = state.stats;
   $("#tagList").innerHTML = s.tags.length
-    ? shownFacet("tags", s.tags).map((t) => `<button class="row sub ${state.tag === t.tag ? "active" : ""}" data-tag="${esc(t.tag)}">${icon("hash")}<span class="label">${esc(t.tag)}</span><span class="n">${t.n}</span></button>`).join("")
+    ? shownFacet("tags", s.tags).map((t) => `<button class="nav-row sub ${state.tag === t.tag ? "active" : ""}" data-tag="${esc(t.tag)}">${icon("hash")}<span class="label">${esc(t.tag)}</span><span class="n">${t.n}</span></button>`).join("")
       + moreFacet("tags", s.tags.length, `Ver las ${s.tags.length} etiquetas`)
     : `<p class="hint">Añade etiquetas desde el lector</p>`;
-  $("#authorList").innerHTML = shownFacet("authors", s.authors).map((a) => `<button class="row sub ${state.author === a.handle ? "active" : ""}" data-author="${esc(a.handle)}">${miniAvatar(a)}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></button>`).join("")
+  $("#authorList").innerHTML = shownFacet("authors", s.authors).map((a) => `<button class="nav-row sub ${state.author === a.handle ? "active" : ""}" data-author="${esc(a.handle)}">${miniAvatar(a)}<span class="label">${esc(a.name || "@" + a.handle)}</span><span class="n">${a.n}</span></button>`).join("")
     + moreFacet("authors", s.authors.length, `Ver los ${s.authors.length} autores`);
 }
 

@@ -12,40 +12,64 @@
 <body>
   <aside class="sidebar" id="sidebar">
     <div class="brand">
-      <span class="logo">📚</span>
-      <div>
-        <h1>Tweetshelf</h1>
-        <p class="muted small">tu estantería de X</p>
-      </div>
+      <span class="brand-mark" data-icon="books"></span>
+      <h1>Tweetshelf</h1>
+      <button class="icon-btn" id="themeBtn" title="Cambiar tema" aria-label="Cambiar tema"></button>
+      <button class="icon-btn only-mobile" id="menuClose" title="Cerrar menú" aria-label="Cerrar menú" data-icon="close"></button>
     </div>
 
-    <nav class="views" id="views"></nav>
+    <button class="btn primary add" id="importBtn">
+      <span data-icon="plus"></span>Añadir
+    </button>
 
-    <section class="facet">
-      <h3>Etiquetas</h3>
-      <div class="chips" id="tagList"></div>
+    <div class="unread-box">
+      <button class="unread" id="unreadBtn" data-view="unread">
+        <span class="pip"></span>
+        <span class="t"><b id="unreadCount"></b><span id="unreadTime"></span></span>
+        <span data-icon="chevron-right"></span>
+      </button>
+      <button class="btn surprise" id="surpriseBtn" title="Abre un artículo sin leer al azar">
+        <span data-icon="arrows-shuffle"></span>Sorpréndeme
+      </button>
+    </div>
+
+    <nav class="section" aria-label="Estantería">
+      <p class="cap">Estantería</p>
+      <div class="rows" id="shelfViews"></div>
+    </nav>
+    <nav class="section" aria-label="Tus marcas">
+      <p class="cap">Tus marcas</p>
+      <div class="rows" id="markViews"></div>
+    </nav>
+    <section class="section">
+      <p class="cap">Etiquetas</p>
+      <div class="rows" id="tagList"></div>
     </section>
-    <section class="facet">
-      <h3>Autores</h3>
-      <ul class="list" id="authorList"></ul>
+    <section class="section">
+      <p class="cap">Autores</p>
+      <div class="rows" id="authorList"></div>
     </section>
-    <section class="facet small muted" id="exportBox">
-      <h3>Exportar</h3>
-      <a href="/api/export.json" download>JSON completo</a> ·
-      <a href="/api/export.md?view=favorites" target="_blank">Favoritos en Markdown</a>
-    </section>
-    <section class="facet small muted">
-      <a href="/logout">Cerrar sesión</a>
-    </section>
+
+    <footer class="foot">
+      <div class="more-wrap">
+        <button type="button" class="foot-btn" data-menu><span data-icon="download"></span>Exportar</button>
+        <div class="menu" role="menu">
+          <a role="menuitem" href="/api/export.json" download>JSON completo</a>
+          <a role="menuitem" href="/api/export.md?view=favorites" target="_blank" rel="noopener">Favoritos en Markdown</a>
+        </div>
+      </div>
+      <a href="/logout"><span data-icon="logout"></span>Cerrar sesión</a>
+    </footer>
   </aside>
 
   <main>
     <header class="topbar">
-      <button class="icon-btn only-mobile" id="menuBtn" aria-label="Menú">☰</button>
+      <button class="icon-btn only-mobile" id="menuBtn" aria-label="Menú" title="Menú" data-icon="menu-2"></button>
       <div class="search">
         <span>🔎</span>
         <input id="q" type="search" placeholder="Busca en tuits, artículos, notas y etiquetas…  ( / )" autocomplete="off">
       </div>
+      <button class="btn primary add-top" id="importBtnTop" aria-label="Añadir" title="Añadir" data-icon="plus"></button>
       <select id="sort" aria-label="Ordenar">
         <option value="recent">Más recientes</option>
         <option value="oldest">Más antiguos</option>
@@ -59,9 +83,6 @@
         <button type="button" data-layout="cards" aria-pressed="true">Tarjetas</button>
         <button type="button" data-layout="list" aria-pressed="false">Lista</button>
       </div>
-      <button class="btn ghost" id="surpriseBtn" title="Abre un artículo sin leer al azar">🎲 Sorpréndeme</button>
-      <button class="icon-btn" id="themeBtn" title="Cambiar tema">◐</button>
-      <button class="btn primary" id="importBtn">＋ Añadir</button>
     </header>
 
 
@@ -78,6 +99,8 @@
     </div>
   </main>
 
+  <!-- Menú del móvil y lector: cada uno tiene su velo -->
+  <div class="scrim hidden" id="menuScrim"></div>
   <!-- Lector -->
   <div class="scrim hidden" id="scrim"></div>
   <div class="drawer" id="drawer" role="dialog" aria-modal="true" aria-label="Lector" aria-hidden="true"></div>

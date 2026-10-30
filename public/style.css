@@ -62,14 +62,14 @@ code { background: var(--line); padding: 1px 5px; border-radius: 4px; font-size:
 }
 .brand-mark svg.i { width: 20px; height: 20px; }
 .brand h1 { flex: 1; min-width: 0; margin: 0; font: 700 21px var(--serif); letter-spacing: -.01em; color: var(--strong); }
-#themeBtn, #menuClose { width: 38px; height: 38px; padding: 0; background: var(--btn); border-color: var(--btn-line); }
+#themeBtn, #menuClose { width: 42px; height: 42px; padding: 0; background: var(--btn); border-color: var(--btn-line); }
 #themeBtn { display: grid; place-items: center; }
 #themeBtn svg.i, #menuClose svg.i { width: 18px; height: 18px; display: block; }
 
 .btn.add, .btn.surprise { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; }
 .btn.add { height: 42px; font-weight: 600; }
 .btn.add svg.i { width: 18px; height: 18px; }
-.btn.surprise { height: 38px; font-weight: 500; background: var(--btn); border-color: var(--btn-line); }
+.btn.surprise { height: 42px; font-weight: 500; background: var(--btn); border-color: var(--btn-line); }
 .btn.surprise svg.i { width: 16px; height: 16px; }
 
 .unread-box {
@@ -138,15 +138,16 @@ main { padding: 0 28px 60px; min-width: 0; }
   padding: 16px 0; background: linear-gradient(var(--bg) 80%, transparent);
 }
 .search {
-  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line);
+  flex: 1; min-width: 0; height: 42px; box-sizing: border-box; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line);
   border-radius: 12px; padding: 0 12px; box-shadow: var(--shadow);
 }
-.search input { flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; padding: 11px 0; }
+.search input { flex: 1; min-width: 0; height: 100%; border: 0; outline: 0; background: transparent; color: inherit; font: inherit; padding: 0; }
 select, .btn, .icon-btn {
+  box-sizing: border-box; height: 42px; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
   padding: 9px 12px; cursor: pointer;
 }
-.icon-btn { padding: 8px 11px; line-height: 1; }
+.icon-btn { width: 42px; padding: 0; }
 .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
 .btn.ghost:hover, .icon-btn:hover { border-color: var(--accent); }
 .btn.danger { color: #c92a2a; }
@@ -245,6 +246,8 @@ kbd { font: 12px var(--sans); background: var(--line); border-radius: 4px; paddi
 .card .meta .note { flex: 1 1 0; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .card .meta svg.i { width: 15px; height: 15px; fill: currentColor; color: var(--star); }
 .card .meta .unread { width: 8px; height: 8px; border-radius: 50%; background: var(--accent); margin-left: auto; flex: none; }
+[data-icon] { display: inline-flex; align-items: center; }
+button svg.i, a svg.i { display: block; }
 svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; flex: none; }
 
 /* acciones: flotan sobre la portada al pasar el ratón; en el móvil van al pie */
@@ -309,7 +312,7 @@ svg.i { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-widt
 }
 
 /* selector de vista: tarjetas o lista */
-.seg { display: flex; gap: 2px; padding: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 11px; }
+.seg { display: flex; align-items: center; gap: 2px; box-sizing: border-box; height: 42px; padding: 3px; background: var(--panel); border: 1px solid var(--line); border-radius: 11px; }
 .seg button { all: unset; cursor: pointer; height: 34px; padding: 0 12px; display: flex; align-items: center; border-radius: 8px; font-size: 13px; color: var(--muted); }
 .seg button:hover { color: var(--strong); }
 .seg button.on { font-weight: 600; background: var(--btn); color: var(--strong); }

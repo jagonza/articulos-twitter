@@ -527,7 +527,7 @@ details li { margin-bottom: 6px; }
   }
   .sidebar.open { transform: none; box-shadow: 10px 0 40px #0003; }
   html.menu-open { overflow: hidden; }
-  .only-mobile { display: inline-block; }
+  .only-mobile { display: inline-flex; }
   .add-top { display: inline-flex; }
   #importBtn { display: none; }
   main { padding: 0 16px 60px; }
